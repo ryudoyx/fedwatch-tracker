@@ -1,0 +1,81 @@
+name: fedwatch
+
+on:
+  schedule:
+    # 23:47 UTC = 北京 07:47，周一到周五（对应美国当天那一场）。
+    # ZQ 日盘 16:00 CT 收盘（夏令时 21:00 UTC、冬令时 22:00 UTC），这时结算价早已出来。
+    # 避开整点：GitHub 的 cron 整点最拥挤，排队能超过一小时。
+    # 数据源每次能拿到最近两个交易日，偶尔漏跑一天会自动补上。
+    - cron: "47 23 * * 1-5"
+  push:
+    branches: [main]
+    paths:
+      - "data/cme_downloads/**"   # 上传了 CME 官方下载 → 马上导入
+      - "config.yaml"
+      - "fedwatch/**"
+      - ".github/workflows/fedwatch.yml"
+  workflow_dispatch:
+
+# 上一轮没跑完就别开新的，否则两个 job 会同时改 data/archive 打架
+concurrency:
+  group: fedwatch
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 把 data/archive/*.csv 提交回仓库
+  pages: write
+  id-token: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 抓数据、重算、出网页
+        id: cloud
+        continue-on-error: true   # 抓取部分失败也照样用已有数据出网页，最后再把这一轮标红
+        run: python -m fedwatch cloud --site _site
+
+      - name: 提交数据存档
+        run: |
+          git config user.name  "fedwatch-tracker[bot]"
+          git config user.email "fedwatch-tracker@users.noreply.github.com"
+          git add data/archive
+          git diff --staged --quiet && { echo "数据无变化"; exit 0; }
+          git commit -m "data: $(date -u +'%Y-%m-%d')"
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep 5
+          done
+          echo "::warning::数据回写失败，下一轮会重新抓"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: 抓取有问题就把这一轮标红（GitHub 会发邮件）
+        if: steps.cloud.outcome == 'failure'
+        run: |
+          echo "::error::抓取或计算有问题，网页用的是已有数据。展开上面「抓数据、重算、出网页」看原因。"
+          exit 1
+
+  deploy:
+    needs: update
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

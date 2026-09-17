@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+logs/
+_site/
+*.tmp
+# 数据库每次从 data/archive/*.csv 重建，不进仓库
+data/fedwatch.sqlite
+data/fedwatch.sqlite-*

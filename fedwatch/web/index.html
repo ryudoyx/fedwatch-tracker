@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FedWatch 跟踪</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11, 11, 11, 0.10);
+  --wash: rgba(11, 11, 11, 0.04);
+  --accent: #2a78d6;
+  --accent-2: #eb6834;
+  --gray-1: #898781;
+  --gray-2: #c3c2b7;
+  --critical: #d03b3b;
+  /* 目标区间的发散色：灰 = 现行区间；红 = 比现行高（加息方向）；蓝 = 比现行低（降息方向） */
+  --lvl-0: #c3c2b7;
+  --lvl-0-line: #898781;
+  --up1: #f3958d; --up2: #e34948; --up3: #a82428; --up4: #681013;
+  --dn1: #86b6ef; --dn2: #3987e5; --dn3: #1c5cab; --dn4: #0d366b;
+  /* 全表格子：概率越高越深 */
+  --heat1: #cde2fb; --heat2: #9ec5f4; --heat3: #6da7ec; --heat4: #3987e5; --heat5: #256abf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255, 255, 255, 0.10); --wash: rgba(255, 255, 255, 0.05);
+    --accent: #3987e5; --accent-2: #d95926; --gray-1: #898781; --gray-2: #52514e; --critical: #e66767;
+    --lvl-0: #52514e; --lvl-0-line: #898781;
+    --up1: #921d21; --up2: #d33739; --up3: #ef7e76; --up4: #fac0ba;
+    --dn1: #184f95; --dn2: #2a78d6; --dn3: #6da7ec; --dn4: #b7d3f6;
+    --heat1: #104281; --heat2: #184f95; --heat3: #256abf; --heat4: #3987e5; --heat5: #6da7ec;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255, 255, 255, 0.10); --wash: rgba(255, 255, 255, 0.05);
+  --accent: #3987e5; --accent-2: #d95926; --gray-1: #898781; --gray-2: #52514e; --critical: #e66767;
+  --lvl-0: #52514e; --lvl-0-line: #898781;
+  --up1: #921d21; --up2: #d33739; --up3: #ef7e76; --up4: #fac0ba;
+  --dn1: #184f95; --dn2: #2a78d6; --dn3: #6da7ec; --dn4: #b7d3f6;
+  --heat1: #104281; --heat2: #184f95; --heat3: #256abf; --heat4: #3987e5; --heat5: #6da7ec;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+.sub { color: var(--ink-2); font-size: 13px; }
+.muted { color: var(--muted); }
+header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
+header.top .grow { flex: 1 1 320px; }
+button, select {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 5px 12px; cursor: pointer;
+}
+button:hover, select:hover { background: var(--wash); }
+button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+button.primary:hover { filter: brightness(1.08); }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.tile .label { color: var(--ink-2); font-size: 13px; }
+.tile .value { font-size: 22px; font-weight: 600; margin: 2px 0; }
+.tile .note { color: var(--muted); font-size: 12.5px; }
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; border-radius: 0; padding: 5px 12px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.flabel { color: var(--ink-2); font-size: 13px; }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ring); margin-bottom: 14px; overflow-x: auto; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; color: var(--ink-2); white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { padding: 3px 10px; font-size: 13px; border-radius: 999px; }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+.chart { position: relative; width: 100%; outline: none; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart .endlabel { fill: var(--ink-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 4px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.legend i.line { height: 2px; width: 14px; border-radius: 1px; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 5; min-width: 150px; max-width: 260px;
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); font-size: 12.5px; display: none;
+}
+.tip .h { color: var(--ink-2); margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tip .r b { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; color: var(--ink); }
+.tip .r em { font-style: normal; color: var(--ink-2); }
+.tip .k { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 5px 8px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { color: var(--ink-2); font-weight: 500; border-bottom: 1px solid var(--grid); }
+td { border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+tr.cur td:first-child::after { content: " 现行"; color: var(--muted); font-size: 12px; }
+th.cur { color: var(--ink); font-weight: 600; }
+.scroll { overflow-x: auto; }
+td.heat { min-width: 52px; }
+.up { color: var(--critical); }
+.down { color: var(--accent); }
+
+details summary { cursor: pointer; color: var(--ink-2); }
+details[open] summary { margin-bottom: 8px; }
+.log { font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; color: var(--ink-2); max-height: 220px; overflow: auto; background: var(--page); border-radius: 8px; padding: 8px; }
+.notice { border-left: 3px solid var(--accent-2); padding: 6px 10px; background: var(--wash); border-radius: 0 8px 8px 0; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
+.empty { padding: 36px 8px; text-align: center; color: var(--ink-2); }
+.prose p { margin: 6px 0; color: var(--ink-2); }
+a { color: var(--accent); }
+.prose code { font-size: 12.5px; }
+.stale { opacity: .55; transition: opacity .15s; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="grow">
+      <h1>FedWatch 跟踪</h1>
+      <div class="sub" id="status">加载中…</div>
+    </div>
+    <button id="btnImport" title="导入 data/cme_downloads 里新放进去的 CME 官方下载文件">导入官方文件</button>
+    <button id="btnUpdate" class="primary">抓最新数据</button>
+  </header>
+
+  <div id="notice"></div>
+  <section class="tiles" id="tiles" aria-label="概览"></section>
+
+  <div class="filters" role="group" aria-label="筛选">
+    <span class="flabel">数据源</span>
+    <div class="seg" id="fSource">
+      <button data-v="calc" aria-pressed="true" title="用 ZQ 期货收盘价按 CME 方法自己算，每天自动更新">自算</button>
+      <button data-v="cme" aria-pressed="false" title="从 CME 官网 FedWatch 下载后导入的官方历史">CME 官方导入</button>
+    </div>
+    <span class="flabel">观察期</span>
+    <div class="seg" id="fRange">
+      <button data-v="all" aria-pressed="true">全部</button>
+      <button data-v="180" aria-pressed="false">近半年</button>
+      <button data-v="90" aria-pressed="false">近3个月</button>
+      <button data-v="30" aria-pressed="false">近1个月</button>
+    </div>
+  </div>
+
+  <nav class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-tab="meeting" aria-selected="true">单次会议概率</button>
+    <button role="tab" data-tab="terminal" aria-selected="false">加息终点</button>
+    <button role="tab" data-tab="path" aria-selected="false">利率路径</button>
+    <button role="tab" data-tab="table" aria-selected="false">全表</button>
+    <button role="tab" data-tab="data" aria-selected="false">数据与方法</button>
+  </nav>
+
+  <section id="view"></section>
+</main>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+const S = {
+  state: null, source: "calc", range: "all", tab: "meeting",
+  meeting: null, horizon: null, mode: "peak", view: "area", asof: null, busy: false, theme: null,
+};
+const cache = new Map();
+
+// ---------- 小工具 ----------
+function h(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+function s(tag, attrs) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  return n;
+}
+function stext(x, y, str, attrs) { const t = s("text", { x, y, ...attrs }); t.textContent = str; return t; }
+const pct = (p, d = 1) => (p * 100).toFixed(d) + "%";
+const rate = v => v.toFixed(2) + "%";
+const rangeLabel = bp => `${(bp / 100).toFixed(2)}–${((bp + 25) / 100).toFixed(2)}%`;
+const md = iso => { const [y, m, d] = iso.split("-"); return `${+m}/${+d}`; };
+const ymd = iso => { const [y, m, d] = iso.split("-"); return `${y.slice(2)}/${+m}/${+d}`; };
+const meetingLabel = iso => { const [y, m, d] = iso.split("-"); return `${y}年${+m}月${+d}日`; };
+const shortMeeting = iso => { const [y, m, d] = iso.split("-"); return `${y.slice(2)}年${+m}月`; };
+const dayMs = iso => Date.parse(iso + "T00:00:00Z");
+function cssv(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function lum(hex) {
+  const c = hex.replace("#", "");
+  const ch = [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
+// 静态模式（GitHub Pages）：没有后台服务，改读预先导出的 data/*.json
+const STATIC = !!document.querySelector('meta[name="fedwatch-static"]');
+function apiPath(path) {
+  if (!STATIC) return path;
+  const u = new URL(path, "http://local");
+  const q = u.searchParams;
+  const src = q.get("source") || "calc";
+  const v = S.state && S.state.last_update && S.state.last_update.finished
+    ? "?v=" + encodeURIComponent(S.state.last_update.finished) : "";
+  if (u.pathname === "/api/state") return "data/state.json";
+  if (u.pathname === "/api/meeting") return `data/${src}/meeting/${q.get("meeting")}.json${v}`;
+  if (u.pathname === "/api/snapshot") return `data/${src}/snapshot/${q.get("asof") || "latest"}.json${v}`;
+  if (u.pathname === "/api/terminal") return `data/${src}/terminal/${q.get("mode") || "peak"}-${q.get("horizon") || "default"}.json${v}`;
+  throw new Error("网页版不支持这个操作");
+}
+async function api(path, opts) {
+  const r = await fetch(apiPath(path), STATIC ? { cache: "no-cache" } : opts);
+  let j;
+  try { j = await r.json(); } catch (e) { throw new Error(r.ok ? "数据格式不对" : `数据文件不存在（${r.status}）`); }
+  if (!r.ok) throw new Error((j && j.error) || r.statusText);
+  return j;
+}
+async function cached(path) {
+  if (!cache.has(path)) cache.set(path, api(path));
+  try { return await cache.get(path); } catch (e) { cache.delete(path); throw e; }
+}
+
+// ---------- 目标区间的颜色（跟着区间走，不跟排名走） ----------
+function stepOf(bp, centerBp) { return Math.max(-4, Math.min(4, Math.round((bp - centerBp) / 25))); }
+function stepColor(step, line) {
+  if (step === 0) return `var(${line ? "--lvl-0-line" : "--lvl-0"})`;
+  return step > 0 ? `var(--up${step})` : `var(--dn${-step})`;
+}
+/** 把各区间按相对现行区间的步数分组；超过 ±4 步的并到最外层。返回从高到低。 */
+function groupLevels(ranges, probs, centerBp, n) {
+  const groups = new Map();
+  for (const bp of ranges) {
+    const st = stepOf(bp, centerBp);
+    if (!groups.has(st)) groups.set(st, { step: st, bps: [], values: new Array(n).fill(0) });
+    const g = groups.get(st);
+    g.bps.push(bp);
+    const arr = probs[String(bp)];
+    for (let i = 0; i < n; i++) g.values[i] += arr[i] || 0;
+  }
+  const out = [...groups.values()].filter(g => g.values.some(v => v >= 0.0005));
+  for (const g of out) {
+    g.bps.sort((a, b) => a - b);
+    if (g.bps.length === 1) g.label = rangeLabel(g.bps[0]);
+    else if (g.step > 0) g.label = `≥ ${(g.bps[0] / 100).toFixed(2)}%`;
+    else g.label = `≤ ${((g.bps[g.bps.length - 1] + 25) / 100).toFixed(2)}%`;
+    if (g.step === 0) g.label += "（现行）";
+    g.color = stepColor(g.step, false);
+    g.line = stepColor(g.step, true);
+  }
+  return out.sort((a, b) => b.step - a.step);
+}
+
+// ---------- 图表 ----------
+function niceTicks(lo, hi, count = 5) {
+  const span = hi - lo || 1;
+  const raw = span / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(m => m >= raw) || raw;
+  const out = [];
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+function timeTicks(t0, t1, width) {
+  const n = Math.max(2, Math.floor(width / 90));
+  const out = [];
+  if (t1 === t0) return [t0];
+  for (let i = 0; i <= n; i++) out.push(t0 + (t1 - t0) * i / n);
+  return out;
+}
+function fmtTick(t, span) {
+  const d = new Date(t);
+  const y = d.getUTCFullYear() % 100, m = d.getUTCMonth() + 1, day = d.getUTCDate();
+  return span > 200 * 864e5 ? `${y}/${m}/${day}` : `${m}/${day}`;
+}
+
+/**
+ * 概率随时间变化：stack=堆叠面积（整个分布怎么移动），lines=每个区间一条线。
+ * groups: [{label, color, line, values[]}]（从高到低）
+ */
+/** 在时间轴上标出 FOMC 决议日（细线 + 顶部小字），看会前会后的跳变 */
+function fomcMarkers(svg, x, t0, t1, top, bottom) {
+  let lastX = -Infinity;
+  const left = x(t0), right = x(t1);
+  for (const d of (S.state && S.state.fomc) || []) {
+    const t = dayMs(d);
+    if (t < t0 || t > t1 || t0 === t1) continue;
+    const xx = x(t);
+    svg.append(s("line", { x1: xx, x2: xx, y1: top, y2: bottom, stroke: "var(--ink)", "stroke-opacity": 0.35, "stroke-width": 1 }));
+    if (xx - lastX > 70) {
+      // 贴着左右边缘的标签往里靠，别压到 y 轴刻度、别出界
+      const anchor = xx - left < 36 ? "start" : right - xx < 36 ? "end" : "middle";
+      const tx = anchor === "start" ? xx + 4 : anchor === "end" ? xx - 4 : xx;
+      svg.append(stext(tx, top - 6, `FOMC ${md(d)}`, { "text-anchor": anchor }));
+      lastX = xx;
+    }
+  }
+}
+
+function distChart(root, { dates, groups, view = "area", extraRows, height = 300 }) {
+  root.textContent = "";
+  const box = h("div", { class: "chart", tabindex: "0", "aria-label": "概率随观察日变化的图，左右方向键逐日查看" });
+  root.append(box);
+  const W = Math.max(320, root.clientWidth || 800);
+  const m = { l: 44, r: view === "lines" ? 92 : 14, t: 24, b: 26 };
+  const pw = W - m.l - m.r, ph = height - m.t - m.b;
+  const ts = dates.map(dayMs);
+  const t0 = ts[0], t1 = ts[ts.length - 1];
+  const single = ts.length === 1;
+  const x = t => single ? m.l + pw / 2 : m.l + (t - t0) / (t1 - t0) * pw;
+  const y = v => m.t + (1 - v) * ph;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${height}`, height, role: "img" });
+
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+    svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: v === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }));
+    svg.append(stext(m.l - 8, y(v) + 4, (v * 100) + "%", { "text-anchor": "end" }));
+  }
+  const ticks = single ? [t0] : timeTicks(t0, t1, pw);
+  ticks.forEach((t, i) => svg.append(stext(x(t), height - 6, fmtTick(t, t1 - t0),
+    { "text-anchor": single ? "middle" : i === 0 ? "start" : i === ticks.length - 1 ? "end" : "middle" })));
+
+  if (view === "area") {
+    const asc = [...groups].reverse();  // 从低利率往上堆
+    const base = new Array(ts.length).fill(0);
+    for (const g of asc) {
+      const top = base.map((b, i) => b + g.values[i]);
+      if (single) {
+        const bw = Math.min(24, pw);
+        svg.append(s("rect", { x: x(t0) - bw / 2, y: y(top[0]), width: bw, height: Math.max(0, y(base[0]) - y(top[0])),
+          fill: g.color, stroke: "var(--surface)", "stroke-width": 2 }));
+      } else {
+        let d = "M" + ts.map((t, i) => `${x(t).toFixed(1)},${y(top[i]).toFixed(1)}`).join("L");
+        d += "L" + ts.map((t, i) => [t, i]).reverse().map(([t, i]) => `${x(t).toFixed(1)},${y(base[i]).toFixed(1)}`).join("L") + "Z";
+        svg.append(s("path", { d, fill: g.color, stroke: "var(--surface)", "stroke-width": 2, "stroke-linejoin": "round" }));
+      }
+      for (let i = 0; i < base.length; i++) base[i] = top[i];
+    }
+  } else {
+    const ends = [];
+    for (const g of [...groups].reverse()) {
+      const pts = ts.map((t, i) => `${x(t).toFixed(1)},${y(g.values[i]).toFixed(1)}`).join(" ");
+      if (single) svg.append(s("circle", { cx: x(t0), cy: y(g.values[0]), r: 4, fill: g.line, stroke: "var(--surface)", "stroke-width": 2 }));
+      else svg.append(s("polyline", { points: pts, fill: "none", stroke: g.line, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      ends.push({ g, v: g.values[g.values.length - 1] });
+    }
+    // 只给末值 ≥ 8% 的几条贴标签，挤在一起的丢掉小的
+    const placed = [];
+    for (const e of ends.filter(e => e.v >= 0.08).sort((a, b) => b.v - a.v)) {
+      const yy = y(e.v);
+      if (placed.some(p => Math.abs(p - yy) < 14)) continue;
+      placed.push(yy);
+      svg.append(stext(m.l + pw + 8, yy + 4, `${(e.v * 100).toFixed(0)}% ${e.g.label.replace("（现行）", "")}`, { class: "endlabel" }));
+    }
+  }
+  fomcMarkers(svg, x, t0, t1, m.t, m.t + ph);
+
+  const cross = s("line", { y1: m.t, y2: m.t + ph, stroke: "var(--ink-2)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const hit = s("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
+  svg.append(hit);
+  box.append(svg);
+  const tip = h("div", { class: "tip", role: "status" });
+  box.append(tip);
+
+  let cur = -1;
+  function show(i) {
+    cur = i;
+    const cx = x(ts[i]);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    tip.textContent = "";
+    tip.append(h("div", { class: "h" }, `观察日 ${dates[i]}`));
+    for (const g of groups) {
+      const v = g.values[i];
+      if (v < 0.0005) continue;
+      tip.append(h("div", { class: "r" }, h("i", { class: "k", style: `background:${g.line}` }), h("b", null, pct(v)), h("em", null, g.label)));
+    }
+    for (const row of (extraRows ? extraRows(i) : [])) tip.append(h("div", { class: "r" }, h("i", { class: "k" }), h("b", null, row[0]), h("em", null, row[1])));
+    tip.style.display = "block";
+    const tw = tip.offsetWidth, bw = box.clientWidth, scale = bw / W;
+    let left = cx * scale + 14;
+    if (left + tw > bw) left = cx * scale - tw - 14;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = (m.t * scale) + "px";
+  }
+  function hide() { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; }
+  function nearest(evt) {
+    const r = svg.getBoundingClientRect();
+    const px = (evt.clientX - r.left) * (W / r.width);
+    let best = 0, bd = Infinity;
+    ts.forEach((t, i) => { const d = Math.abs(x(t) - px); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  hit.addEventListener("pointermove", e => show(nearest(e)));
+  hit.addEventListener("pointerleave", hide);
+  box.addEventListener("focus", () => show(cur >= 0 ? cur : ts.length - 1));
+  box.addEventListener("blur", hide);
+  box.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft") { show(Math.max(0, (cur < 0 ? ts.length : cur) - 1)); e.preventDefault(); }
+    if (e.key === "ArrowRight") { show(Math.min(ts.length - 1, cur + 1)); e.preventDefault(); }
+  });
+}
+
+/** 折线（同一单位，一根 y 轴）。xs: 日期字符串；series: [{name, color, values[], width}] */
+function lineChart(root, { xs, series, height = 240, yFmt = rate, ref, xFmt, tipTitle, markers = false }) {
+  root.textContent = "";
+  const box = h("div", { class: "chart", tabindex: "0", "aria-label": "折线图，左右方向键逐点查看" });
+  root.append(box);
+  const W = Math.max(320, root.clientWidth || 800);
+  const m = { l: 52, r: 86, t: markers ? 24 : 12, b: 26 };
+  const pw = W - m.l - m.r, ph = height - m.t - m.b;
+  const ts = xs.map(dayMs);
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  const single = t0 === t1;
+  const x = t => single ? m.l + pw / 2 : m.l + (t - t0) / (t1 - t0) * pw;
+  const all = series.flatMap(se => se.values.filter(v => v != null));
+  if (ref) all.push(ref.value);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = Math.max(0.05, (hi - lo) * 0.12);
+  lo = Math.floor((lo - pad) * 8) / 8; hi = Math.ceil((hi + pad) * 8) / 8;
+  const y = v => m.t + (1 - (v - lo) / (hi - lo)) * ph;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${height}`, height, role: "img" });
+  niceTicks(lo, hi, 5).forEach(v => {
+    svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }));
+    svg.append(stext(m.l - 8, y(v) + 4, yFmt(v), { "text-anchor": "end" }));
+  });
+  svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: m.t + ph, y2: m.t + ph, stroke: "var(--axis)", "stroke-width": 1 }));
+  if (markers) fomcMarkers(svg, x, t0, t1, m.t, m.t + ph);
+  if (ref) {
+    svg.append(s("line", { x1: m.l, x2: m.l + pw, y1: y(ref.value), y2: y(ref.value), stroke: "var(--gray-1)", "stroke-width": 1 }));
+    svg.append(stext(m.l + pw + 8, y(ref.value) + 4, ref.label, { class: "endlabel" }));
+  }
+  const uniq = [...new Set(ts)].sort((a, b) => a - b);
+  const ticks = uniq.length <= 12 ? uniq : timeTicks(t0, t1, pw);
+  ticks.forEach((t, i) => svg.append(stext(x(t), height - 6, xFmt ? xFmt(t) : fmtTick(t, t1 - t0),
+    { "text-anchor": single ? "middle" : (uniq.length > 12 && i === 0) ? "start" : (uniq.length > 12 && i === ticks.length - 1) ? "end" : "middle" })));
+
+  // 倒序画线，让排在前面的（重点）系列压在最上面；标签按正序放，重点系列优先
+  const ends = [];
+  for (const se of [...series].reverse()) {
+    const pts = ts.map((t, i) => se.values[i] == null ? null : [x(t), y(se.values[i])]).filter(Boolean);
+    if (!pts.length) continue;
+    svg.append(s("polyline", { points: pts.map(p => p.map(v => v.toFixed(1)).join(",")).join(" "), fill: "none",
+      stroke: se.color, "stroke-width": se.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const last = pts[pts.length - 1];
+    svg.append(s("circle", { cx: last[0], cy: last[1], r: 4, fill: se.color, stroke: "var(--surface)", "stroke-width": 2 }));
+    ends.unshift({ se, last });
+  }
+  const placed = [];
+  for (const { se, last } of ends) {
+    if (placed.some(p => Math.abs(p - last[1]) < 14)) continue;
+    placed.push(last[1]);
+    svg.append(stext(last[0] + 8, last[1] + 4, se.name, { class: "endlabel" }));
+  }
+  const cross = s("line", { y1: m.t, y2: m.t + ph, stroke: "var(--ink-2)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const hit = s("rect", { x: m.l - 10, y: m.t, width: pw + 20, height: ph, fill: "transparent" });
+  svg.append(hit);
+  box.append(svg);
+  const tip = h("div", { class: "tip", role: "status" });
+  box.append(tip);
+  let cur = -1;
+  const order = uniq;
+  function show(k) {
+    cur = k;
+    const t = order[k];
+    const cx = x(t);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    tip.textContent = "";
+    tip.append(h("div", { class: "h" }, tipTitle ? tipTitle(t) : new Date(t).toISOString().slice(0, 10)));
+    for (const se of series) {
+      const i = ts.indexOf(t);
+      const v = i >= 0 ? se.values[i] : null;
+      if (v == null) continue;
+      tip.append(h("div", { class: "r" }, h("i", { class: "k", style: `background:${se.color}` }), h("b", null, yFmt(v)), h("em", null, se.name)));
+    }
+    tip.style.display = "block";
+    const tw = tip.offsetWidth, bw = box.clientWidth, scale = bw / W;
+    let left = cx * scale + 14;
+    if (left + tw > bw) left = cx * scale - tw - 14;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = (m.t * scale) + "px";
+  }
+  function hide() { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; }
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (W / r.width);
+    let best = 0, bd = Infinity;
+    order.forEach((t, i) => { const d = Math.abs(x(t) - px); if (d < bd) { bd = d; best = i; } });
+    show(best);
+  });
+  hit.addEventListener("pointerleave", hide);
+  box.addEventListener("focus", () => show(cur >= 0 ? cur : order.length - 1));
+  box.addEventListener("blur", hide);
+  box.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft") { show(Math.max(0, (cur < 0 ? order.length : cur) - 1)); e.preventDefault(); }
+    if (e.key === "ArrowRight") { show(Math.min(order.length - 1, cur + 1)); e.preventDefault(); }
+  });
+}
+
+function legend(items) {
+  return h("div", { class: "legend" }, items.map(it =>
+    h("span", null, h("i", { class: it.shape === "line" ? "line" : "", style: `background:${it.color}` }), it.label)));
+}
+
+// ---------- 数据切片 ----------
+function sliceByRange(obj, keys) {
+  if (S.range === "all" || !obj.dates.length) return obj;
+  const last = dayMs(obj.dates[obj.dates.length - 1]);
+  const from = last - (+S.range) * 864e5;
+  const idx = obj.dates.map((d, i) => dayMs(d) >= from ? i : -1).filter(i => i >= 0);
+  const out = { ...obj, dates: idx.map(i => obj.dates[i]) };
+  for (const k of keys) if (Array.isArray(obj[k])) out[k] = idx.map(i => obj[k][i]);
+  if (obj.probs) out.probs = Object.fromEntries(Object.entries(obj.probs).map(([bp, arr]) => [bp, idx.map(i => arr[i])]));
+  return out;
+}
+function centerBp() {
+  const b = S.state && S.state.base;
+  return b ? Math.round(b.lower * 100) : null;
+}
+function sourceMeetings() {
+  return (S.state.meetings || []).filter(m => m[S.source]).map(m => m.meeting);
+}
+
+// ---------- 顶部 ----------
+function renderHeader() {
+  const st = S.state;
+  const status = document.getElementById("status");
+  const notice = document.getElementById("notice");
+  notice.textContent = "";
+  const lu = st.last_update;
+  const parts = [];
+  if (st.latest_asof) parts.push(`自算数据截至 ${st.latest_asof}（ZQ 收盘价）`);
+  if (lu && lu.finished) parts.push(`上次更新 ${lu.finished}${STATIC ? "（北京时间）" : ""}${lu.ok ? "" : "（有问题，见「数据与方法」）"}`);
+  if (STATIC) parts.push("每个交易日早上自动更新");
+  if (S.busy) parts.push(`正在${st.busy}…`);
+  status.textContent = parts.join(" · ") || "还没有数据";
+  for (const id of ["btnUpdate", "btnImport"]) {
+    const b = document.getElementById(id);
+    b.hidden = STATIC;
+    b.disabled = !!S.busy;
+  }
+  if (st.base && !String(st.base.source).startsWith("nyfed")) {
+    notice.append(h("div", { class: "notice" },
+      `最近一次会议的决议纽约联储还没公布到数据里，现行区间按当月期货反推为 ${rangeLabel(Math.round(st.base.lower * 100))}（${st.base.source}）。数据更新后会自动改用官方区间；如果反推错了，可以在 config.yaml 里填 target_override。`));
+  } else if (st.base && st.base.source !== "nyfed") {
+    notice.append(h("div", { class: "notice" }, `现行区间来源：${st.base.source}`));
+  }
+}
+
+async function renderTiles() {
+  const box = document.getElementById("tiles");
+  box.textContent = "";
+  const st = S.state;
+  if (!st.latest_asof) return;
+  const snap = await cached(`/api/snapshot?source=calc`);
+  const base = st.base.lower, cbp = Math.round(base * 100);
+  const tile = (label, value, note) => h("div", { class: "tile" }, h("div", { class: "label" }, label), h("div", { class: "value" }, value), h("div", { class: "note" }, note));
+  const effr = st.effr ? `EFFR ${st.effr.rate.toFixed(2)}%（${md(st.effr.date)}）` : "";
+  box.append(tile("现行目标区间", rangeLabel(cbp), effr));
+
+  const probAbove = (mt, thr) => Object.entries(mt.dist).reduce((a, [bp, p]) => a + (+bp > thr ? p : 0), 0);
+  const probBelow = (mt, thr) => Object.entries(mt.dist).reduce((a, [bp, p]) => a + (+bp < thr ? p : 0), 0);
+  const next = snap.meetings[0];
+  if (next) {
+    const up = probAbove(next, cbp), dn = probBelow(next, cbp);
+    const wk = snap.compare["1w"] && snap.compare["1w"].meetings.find(x => x.meeting === next.meeting);
+    const wkNote = wk ? ` · 1周前 ${pct(probAbove(wk, cbp))}（同一门槛）` : "";
+    const main = up >= dn ? `加息 ${pct(up)}` : `降息 ${pct(dn)}`;
+    box.append(tile(`下次会议 ${md(next.meeting)}`, main, `不变 ${pct(1 - up - dn)}${up >= dn ? wkNote : ""}`));
+  }
+  try {
+    const term = await cached(`/api/terminal?source=calc&mode=peak`);
+    const n = term.dates.length - 1;
+    if (n >= 0) {
+      let best = null;
+      for (const bp of term.ranges) { const p = term.probs[bp][n]; if (!best || p > best.p) best = { bp: +bp, p }; }
+      const pm = term.path_extreme_meeting[n];
+      box.append(tile(`加息终点（到 ${shortMeeting(term.horizon)}）`, `期望 ${rate(term.exp_extreme[n])}`,
+        `最可能 ${rangeLabel(best.bp)}（${pct(best.p, 0)}）` + (pm ? ` · 预期路径高点在 ${shortMeeting(pm)}` : "")));
+    }
+  } catch (e) { /* 数据不够时不显示 */ }
+  const cs = st.sources;
+  box.append(tile("已积累", `${cs.calc.n} 个交易日`,
+    `自算 ${cs.calc.first ? ymd(cs.calc.first) + "起" : "无"} · 官方导入 ${cs.cme.n ? cs.cme.n + " 天" : "无"}`));
+}
+
+// ---------- 单次会议 ----------
+async function renderMeeting(view) {
+  const meetings = sourceMeetings();
+  if (!meetings.length) return view.append(emptyBox());
+  const latestMeetings = S.source === "calc" ? meetings.filter(m => m > (S.state.latest_asof || "")) : meetings;
+  const list = latestMeetings.length ? latestMeetings : meetings;
+  if (!S.meeting || !list.includes(S.meeting)) S.meeting = list.includes("2027-03-17") ? "2027-03-17" : list[0];
+
+  const chips = h("div", { class: "chips", role: "group", "aria-label": "选择会议" },
+    list.map(mt => h("button", { "aria-pressed": String(mt === S.meeting), onclick: () => { S.meeting = mt; render(); } }, ymd(mt))));
+  const viewSeg = segControl([["area", "堆叠"], ["lines", "折线"]], S.view, v => { S.view = v; render(); });
+  view.append(h("div", { class: "filters" }, h("span", { class: "flabel" }, "会议"), chips, h("span", { class: "flabel" }, "图形"), viewSeg));
+
+  const raw = await cached(`/api/meeting?source=${S.source}&meeting=${S.meeting}`);
+  const data = sliceByRange(raw, ["exp_lower", "delta_bp", "base_lower", "p_hike", "p_hold", "p_cut"]);
+  const card = h("div", { class: "card" });
+  view.append(card);
+  card.append(h("h2", null, `${meetingLabel(S.meeting)} 会议后目标区间的概率`));
+  card.append(h("div", { class: "sub" }, `横轴是观察日：那一天市场给这次会议定价的分布。共 ${data.dates.length} 个观察日。`));
+  if (!data.dates.length) { card.append(emptyBox("这段时间没有数据")); return; }
+  const center = S.source === "calc" && centerBp() != null ? centerBp() : Math.round(data.base_lower[data.base_lower.length - 1] * 100);
+  const groups = groupLevels(data.ranges, data.probs, center, data.dates.length);
+  const chartBox = h("div");
+  card.append(legend(groups.map(g => ({ label: g.label, color: S.view === "lines" ? g.line : g.color, shape: S.view === "lines" ? "line" : "rect" }))));
+  card.append(chartBox);
+  deferDraw(() => distChart(chartBox, { dates: data.dates, groups, view: S.view,
+    extraRows: i => [[rate(data.exp_lower[i] + 0.125), "期望目标利率（区间中值）"]] }));
+
+  const card2 = h("div", { class: "card" });
+  view.append(card2);
+  card2.append(h("h2", null, "期望目标利率（区间中值）"));
+  card2.append(h("div", { class: "sub" }, "把上面的分布按概率加权成一个数，看市场预期整体往哪边走。"));
+  const lc = h("div");
+  card2.append(lc);
+  deferDraw(() => lineChart(lc, { xs: data.dates, markers: true, series: [{ name: "期望值", color: "var(--accent)", values: data.exp_lower.map(v => v + 0.125) }] }));
+
+  // 对比表：最新 vs 1天/1周/1月前
+  const n = raw.dates.length - 1;
+  const lastDay = raw.dates[n];
+  const pick = days => {
+    const target = dayMs(lastDay) - days * 864e5;
+    let idx = -1;
+    raw.dates.forEach((d, i) => { if (dayMs(d) <= target) idx = i; });
+    return idx;
+  };
+  const cols = [["最新", n], ["1天前", n - 1], ["1周前", pick(7)], ["1月前", pick(30)]].filter(([, i]) => i >= 0);
+  const table = h("table", null,
+    h("thead", null, h("tr", null, h("th", null, "目标区间"), cols.map(([name, i]) => h("th", null, `${name}（${md(raw.dates[i])}）`)))),
+    h("tbody", null, [...raw.ranges].reverse().filter(bp => cols.some(([, i]) => raw.probs[bp][i] >= 0.0005)).map(bp =>
+      h("tr", { class: +bp === Math.round(raw.base_lower[n] * 100) ? "cur" : "" }, h("td", null, rangeLabel(+bp)),
+        cols.map(([, i], k) => {
+          const v = raw.probs[bp][i];
+          const cell = h("td", null, pct(v));
+          if (k > 0) {
+            const d = raw.probs[bp][n] - v;
+            if (Math.abs(d) >= 0.001) cell.title = `到最新变化 ${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}pp`;
+          }
+          return cell;
+        })))));
+  view.append(h("div", { class: "card" }, h("h2", null, "最新 vs 之前"), h("div", { class: "sub" }, "和 CME 页面上 Current / 1 Day / 1 Week / 1 Month 同一个口径。"), h("div", { class: "scroll" }, table)));
+}
+
+function segControl(options, value, onChange) {
+  return h("div", { class: "seg" }, options.map(([v, label]) =>
+    h("button", { "aria-pressed": String(v === value), onclick: () => onChange(v) }, label)));
+}
+function emptyBox(msg) {
+  const st = S.state;
+  if (msg) return h("div", { class: "empty" }, msg);
+  if (S.source === "cme") {
+    return h("div", { class: "empty" },
+      h("div", null, "还没有导入 CME 官方历史数据。"),
+      h("div", { class: "sub" }, STATIC
+        ? `到 CME FedWatch 页面选中会议 → 左侧 Historical → Downloads 下载 Excel，上传到仓库的 ${st.cme_dir}/，提交后会自动导入。详见「数据与方法」。`
+        : `到 CME FedWatch 页面选中会议 → 左侧 Historical → Downloads 下载 Excel，放进 ${st.cme_dir}，再点右上角「导入官方文件」。详见「数据与方法」。`));
+  }
+  return h("div", { class: "empty" }, STATIC ? "还没有数据，等下一次自动更新。" : "还没有数据，点右上角「抓最新数据」。");
+}
+
+// ---------- 加息终点 ----------
+async function renderTerminal(view) {
+  const first = await cached(`/api/terminal?source=${S.source}&mode=${S.mode}`);
+  const horizons = first.horizons || [];
+  if (!first.dates.length) return view.append(emptyBox());
+  if (!S.horizon || !horizons.includes(S.horizon)) S.horizon = first.horizon;
+  const raw = S.horizon === first.horizon ? first : await cached(`/api/terminal?source=${S.source}&mode=${S.mode}&horizon=${S.horizon}`);
+
+  const chips = h("div", { class: "chips", role: "group", "aria-label": "统计到哪次会议为止" },
+    horizons.map(mt => h("button", { "aria-pressed": String(mt === S.horizon), onclick: () => { S.horizon = mt; render(); } }, ymd(mt))));
+  view.append(h("div", { class: "filters" },
+    h("span", { class: "flabel" }, "看"), segControl([["peak", "加息终点（最高）"], ["trough", "降息终点（最低）"]], S.mode, v => { S.mode = v; render(); }),
+    h("span", { class: "flabel" }, "图形"), segControl([["area", "堆叠"], ["lines", "折线"]], S.view, v => { S.view = v; render(); })));
+  view.append(h("div", { class: "filters" }, h("span", { class: "flabel" }, "统计到"), chips));
+
+  const data = sliceByRange(raw, ["base_lower", "exp_extreme", "path_extreme", "path_extreme_meeting"]);
+  const word = S.mode === "peak" ? "最高" : "最低";
+  const card = h("div", { class: "card" });
+  view.append(card);
+  card.append(h("h2", null, `到 ${meetingLabel(raw.horizon)} 为止，路径上${word}目标区间的概率`));
+  card.append(h("div", { class: "sub" },
+    `沿 FedWatch 的概率树把每次会议串起来，统计每条路径${S.mode === "peak" ? "加到的最高点" : "降到的最低点"}（包括现行区间本身）。和 FedWatch 一样假设各次会议互相独立。`));
+  if (!data.dates.length) { card.append(emptyBox("这段时间没有数据")); return; }
+  const center = S.source === "calc" && centerBp() != null ? centerBp() : Math.round(data.base_lower[data.base_lower.length - 1] * 100);
+  const groups = groupLevels(raw.ranges, data.probs, center, data.dates.length);
+  card.append(legend(groups.map(g => ({ label: g.label, color: S.view === "lines" ? g.line : g.color, shape: S.view === "lines" ? "line" : "rect" }))));
+  const cb = h("div");
+  card.append(cb);
+  deferDraw(() => distChart(cb, { dates: data.dates, groups, view: S.view,
+    extraRows: i => [[rate(data.exp_extreme[i]), `期望${word}点（区间下限）`],
+      ...(data.path_extreme_meeting[i] ? [[shortMeeting(data.path_extreme_meeting[i]), `预期路径${word}点所在会议`]] : [])] }));
+
+  const card2 = h("div", { class: "card" });
+  view.append(card2);
+  card2.append(h("h2", null, `终点利率的两种算法（区间下限，%）`));
+  card2.append(h("div", { class: "sub" },
+    `「期望${word}点」= 上图分布的加权平均；「预期路径${word}点」= 先对每次会议取期望、再取${word}。前者把路径上的来回也算进去，所以不会${S.mode === "peak" ? "低" : "高"}于后者；两条线重合，说明到${word}点之前市场没有定价反方向的操作。`));
+  card2.append(legend([{ label: `期望${word}点`, color: "var(--accent)", shape: "line" }, { label: `预期路径${word}点`, color: "var(--accent-2)", shape: "line" }]));
+  const lc = h("div");
+  card2.append(lc);
+  deferDraw(() => lineChart(lc, { xs: data.dates, markers: true, series: [
+    { name: `期望${word}点`, color: "var(--accent)", values: data.exp_extreme },
+    { name: `路径${word}点`, color: "var(--accent-2)", values: data.path_extreme },
+  ] }));
+
+  // 表：最新分布 vs 1周/1月前
+  const n = raw.dates.length - 1;
+  const idxBefore = days => { let k = -1; raw.dates.forEach((d, i) => { if (dayMs(d) <= dayMs(raw.dates[n]) - days * 864e5) k = i; }); return k; };
+  const cols = [["最新", n], ["1周前", idxBefore(7)], ["1月前", idxBefore(30)], ["3月前", idxBefore(91)]].filter(([, i]) => i >= 0);
+  const rows = [...raw.ranges].reverse().filter(bp => cols.some(([, i]) => raw.probs[bp][i] >= 0.0005));
+  view.append(h("div", { class: "card" }, h("h2", null, `${word}点分布：最新 vs 之前`),
+    h("div", { class: "scroll" }, h("table", null,
+      h("thead", null, h("tr", null, h("th", null, `${word}到达的区间`), cols.map(([name, i]) => h("th", null, `${name}（${md(raw.dates[i])}）`)))),
+      h("tbody", null,
+        rows.map(bp => h("tr", { class: +bp === Math.round(raw.base_lower[n] * 100) ? "cur" : "" }, h("td", null, rangeLabel(+bp)), cols.map(([, i]) => h("td", null, pct(raw.probs[bp][i]))))),
+        h("tr", null, h("td", null, `期望${word}点`), cols.map(([, i]) => h("td", null, rate(raw.exp_extreme[i])))))))));
+}
+
+// ---------- 利率路径 ----------
+async function renderPath(view) {
+  const snap = await cached(`/api/snapshot?source=${S.source}`);
+  if (!snap.asof) return view.append(emptyBox());
+  // 最新一条是重点（主色），之前的用两档灰做背景；3 个月前只进表不进图
+  const sets = [["最新", snap, "var(--accent)", 2.5], ["1周前", snap.compare["1w"], "var(--gray-1)", 2], ["1月前", snap.compare["1m"], "var(--gray-2)", 2], ["3月前", snap.compare["3m"], null, 0]]
+    .filter(([, sn]) => sn && sn.meetings.length && sn.asof !== snap.asof)
+    .filter(([name, sn], i, arr) => name === "最新" || !arr.slice(0, i).some(([, o]) => o.asof === sn.asof));
+  if (!sets.length || sets[0][0] !== "最新") sets.unshift(["最新", snap, "var(--accent)", 2.5]);
+  const meetings = [...new Set(sets.flatMap(([, sn]) => sn.meetings.map(m => m.meeting)))].sort().filter(m => m > snap.asof);
+  const card = h("div", { class: "card" });
+  view.append(card);
+  card.append(h("h2", null, "每次会议后的期望目标利率（区间中值）"));
+  card.append(h("div", { class: "sub" }, "横轴是会议日期。几条线是不同观察日的定价，看整条预期路径怎么平移、终点怎么变。"));
+  const plotted = sets.filter(([, , color]) => color);
+  card.append(legend(plotted.map(([name, sn, color]) => ({ label: `${name}（${sn.asof}）`, color, shape: "line" }))));
+  const lc = h("div");
+  card.append(lc);
+  const series = sets.map(([name, sn, color, width]) => ({
+    name, color, width,
+    values: meetings.map(mt => { const x = sn.meetings.find(m => m.meeting === mt); return x ? x.exp_lower + 0.125 : null; }),
+  }));
+  deferDraw(() => lineChart(lc, { xs: meetings, series: series.filter(se => se.color), height: 280, ref: { value: snap.base_lower + 0.125, label: "现行" },
+    xFmt: t => { const d = new Date(t); return `${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth() + 1}`; },
+    tipTitle: t => `${meetingLabel(new Date(t).toISOString().slice(0, 10))} 会议后` }));
+
+  const table = h("table", null,
+    h("thead", null, h("tr", null, h("th", null, "会议"), sets.map(([name, sn]) => h("th", null, `${name}（${md(sn.asof)}）`)), h("th", null, "本次预期变动"), h("th", null, "算法"))),
+    h("tbody", null, meetings.map((mt, k) => {
+      const latest = snap.meetings.find(m => m.meeting === mt);
+      return h("tr", null, h("td", null, meetingLabel(mt)),
+        series.map(se => h("td", null, se.values[k] == null ? "" : rate(se.values[k]))),
+        h("td", null, latest && latest.delta_bp != null ? `${latest.delta_bp >= 0 ? "+" : ""}${latest.delta_bp.toFixed(1)}bp` : ""),
+        h("td", { class: "muted" }, latest && latest.method ? { backward: "锚月倒推", forward: "锚月正推", chain: "链式倒推" }[latest.method] : ""));
+    })));
+  view.append(h("div", { class: "card" }, h("h2", null, "路径数值"), h("div", { class: "scroll" }, table)));
+}
+
+// ---------- 全表 ----------
+async function renderTable(view) {
+  const base = await cached(`/api/snapshot?source=${S.source}`);
+  if (!base.asof) return view.append(emptyBox());
+  const dates = base.dates || [];
+  if (!S.asof || !dates.includes(S.asof)) S.asof = base.asof;
+  const snap = S.asof === base.asof ? base : await cached(`/api/snapshot?source=${S.source}&asof=${S.asof}`);
+  const sel = h("select", { "aria-label": "观察日", onchange: e => { S.asof = e.target.value; render(); } },
+    [...dates].reverse().map(d => h("option", { value: d, selected: d === S.asof }, d)));
+  view.append(h("div", { class: "filters" }, h("span", { class: "flabel" }, "观察日"), sel,
+    h("span", { class: "sub" }, `现行区间 ${rangeLabel(Math.round(snap.base_lower * 100))}（${snap.base_source}）`)));
+
+  const cbp = Math.round(snap.base_lower * 100);
+  const bps = [...new Set(snap.meetings.flatMap(m => Object.entries(m.dist).filter(([, p]) => p >= 0.0005).map(([bp]) => +bp)))].sort((a, b) => a - b);
+  const heatVars = ["--heat1", "--heat2", "--heat3", "--heat4", "--heat5"].map(cssv);
+  const cell = p => {
+    if (p < 0.0005) return h("td", { class: "heat" }, "");
+    const k = p >= 0.8 ? 4 : p >= 0.6 ? 3 : p >= 0.4 ? 2 : p >= 0.2 ? 1 : p >= 0.05 ? 0 : -1;
+    if (k < 0) return h("td", { class: "heat" }, pct(p));
+    const bg = heatVars[k];
+    const txt = lum(bg) > 0.35 ? "#0b0b0b" : "#ffffff";
+    return h("td", { class: "heat", style: `background:${bg};color:${txt}` }, pct(p));
+  };
+  const table = h("table", null,
+    h("thead", null, h("tr", null, h("th", null, "会议"), bps.map(bp => h("th", { class: bp === cbp ? "cur" : "" }, (bp / 100).toFixed(2) + (bp === cbp ? " 现行" : ""))),
+      h("th", null, "加息"), h("th", null, "不变"), h("th", null, "降息"), h("th", null, "期望"))),
+    h("tbody", null, snap.meetings.map(m => {
+      const up = Object.entries(m.dist).reduce((a, [bp, p]) => a + (+bp > cbp ? p : 0), 0);
+      const dn = Object.entries(m.dist).reduce((a, [bp, p]) => a + (+bp < cbp ? p : 0), 0);
+      return h("tr", null, h("td", null, meetingLabel(m.meeting)), bps.map(bp => cell(m.dist[String(bp)] || 0)),
+        h("td", null, pct(up)), h("td", null, pct(1 - up - dn)), h("td", null, pct(dn)), h("td", null, rate(m.exp_lower + 0.125)));
+    })));
+  view.append(h("div", { class: "card" },
+    h("h2", null, `${snap.asof} 各次会议后目标区间的概率`),
+    h("div", { class: "sub" }, "列是目标区间下限（%）。颜色越深概率越高：5% / 20% / 40% / 60% / 80% 分档。「期望」是区间中值的加权平均。"),
+    h("div", { class: "scroll" }, table)));
+}
+
+// ---------- 数据与方法 ----------
+function renderData(view) {
+  const st = S.state;
+  const lu = st.last_update || {};
+  const imports = st.imports || [];
+  view.append(h("div", { class: "card" },
+    h("h2", null, "数据状态"),
+    h("table", null, h("tbody", null,
+      h("tr", null, h("td", null, "ZQ 期货价格"), h("td", null, st.prices.last ? `截至 ${st.prices.last}，${st.prices.contracts} 个合约（日线收盘：历史来自 Yahoo Finance，云端每日来自 TradingView）` : "无")),
+      h("tr", null, h("td", null, "EFFR / 目标区间"), h("td", null, st.effr ? `截至 ${st.effr.date}：EFFR ${st.effr.rate}%，区间 ${st.effr.lower}–${st.effr.upper}%（纽约联储）` : "无")),
+      h("tr", null, h("td", null, "自算概率"), h("td", null, st.sources.calc.n ? `${st.sources.calc.first} ~ ${st.sources.calc.last}，${st.sources.calc.n} 个观察日` : "无")),
+      h("tr", null, h("td", null, "CME 官方导入"), h("td", null, st.sources.cme.n ? `${st.sources.cme.first} ~ ${st.sources.cme.last}，${st.sources.cme.n} 个观察日` : "无")),
+      h("tr", null, h("td", null, "上次更新"), h("td", null, lu.finished ? `${lu.finished} ${lu.ok ? "正常" : "有问题：" + (lu.errors || []).join("；")}` : "无")))),
+    st.logs && st.logs.length ? h("details", { open: !!S.busy }, h("summary", null, "本次运行日志"), h("div", { class: "log" }, st.logs.join("\n"))) : null));
+
+  const repoLink = st.repo_url ? h("a", { href: `${st.repo_url}/tree/main/${st.cme_dir}`, target: "_blank", rel: "noopener" }, `仓库的 ${st.cme_dir}/`) : `仓库的 ${st.cme_dir}/`;
+  view.append(h("div", { class: "card prose" },
+    h("h2", null, "导入 CME 官方历史（补一年历史）"),
+    h("p", null, "自算数据只能从开始每天记录的那天往后攒（已到期的合约查不到价格）。想看更早的，用 CME 官方下载："),
+    h("p", null, "1. 打开 cmegroup.com 的 FedWatch 页面，上方选中要看的会议（例如 17 Mar27）。"),
+    h("p", null, "2. 左侧「Historical」框里点「Downloads」，下载这次会议过去一年的每日概率 Excel。"),
+    STATIC
+      ? h("p", null, "3. 上传到 ", repoLink, "（GitHub 网页上 Add file → Upload files，文件名最好带会议日期，例如 FedWatch_20270317.xlsx），提交后几分钟内自动导入并更新网页。")
+      : h("p", null, `3. 把文件放进 ${st.cme_dir}（文件名最好带会议日期，例如 FedWatch_20270317.xlsx），点右上角「导入官方文件」。每天的定时任务也会自动导入。`),
+    h("p", null, "4. 想算「加息终点」，要把观察期内所有会议都下载下来（中间缺一次会议，那天就算不了）。"),
+    imports.length ? h("div", { class: "scroll" }, h("table", null,
+      h("thead", null, h("tr", null, h("th", null, "文件"), h("th", null, "会议"), h("th", null, "行数"), h("th", null, "时间"), h("th", null, "结果"))),
+      h("tbody", null, imports.map(r => h("tr", null, h("td", null, r.file), h("td", null, r.meeting || ""), h("td", null, r.rows),
+        h("td", null, r.imported_at), h("td", { class: r.error ? "up" : "muted" }, r.error || "成功")))))) : null));
+
+  view.append(h("div", { class: "card prose" },
+    h("h2", null, "算法"),
+    h("p", null, "照 CME 公布的 FedWatch 方法：ZQ（30 天联邦基金期货）价格 → 该月隐含平均 EFFR = 100 − 价格。没有会议的整月当「锚」，它的均值就是上个月的月末利率、下个月的月初利率；会议月用「月初 × 会前天数 + 月末 × 会后天数」反解另一端。锚月往前一路倒推、往后只推一个月。每次会议的预期变动折成 25bp 的步数，拆成相邻两个结果的概率，再逐次会议卷积出累积分布。"),
+    h("p", null, "校验：拿 2026-07-13 ~ 09-10 的 51 个 CME 官方快照逐日对比，每次会议各区间的最大偏差中位数 1.2 个百分点（75% 分位 2.5、90% 分位 5.2）。差异主要来自价格时点：这里用日收盘价，CME 页面是盘中实时价。"),
+    h("p", null, "「加息终点」是在同一棵概率树上，统计每条路径到达过的最高区间；「预期路径高点」是先对每次会议求期望再取最大。二者都只反映期货定价，不含期限溢价调整。"),
+    h("p", null, "注意：一年以后的合约成交清淡，最远的几次会议概率日间抖动会更大。")));
+  if (STATIC && st.repo_url) {
+    view.append(h("div", { class: "card prose" }, h("h2", null, "源码与数据"),
+      h("p", null, "代码、每日价格存档（data/archive/*.csv）和运行记录都在 ",
+        h("a", { href: st.repo_url, target: "_blank", rel: "noopener" }, st.repo_url.replace("https://github.com/", "github.com/")),
+        "。每个交易日北京时间早上由 GitHub Actions 自动抓数、重算、发布。")));
+  }
+}
+
+// ---------- 主流程 ----------
+// 图表要按容器的真实宽度画：先把新内容搭好、替换进页面，再统一画图。
+// 数据没回来之前旧画面保持半透明，不闪白。
+let pendingDraws = [];
+const deferDraw = fn => pendingDraws.push(fn);
+let renderSeq = 0;
+async function render() {
+  const seq = ++renderSeq;
+  const view = document.getElementById("view");
+  for (const b of document.querySelectorAll("#tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === S.tab));
+  for (const b of document.querySelectorAll("#fSource button")) b.setAttribute("aria-pressed", String(b.dataset.v === S.source));
+  for (const b of document.querySelectorAll("#fRange button")) b.setAttribute("aria-pressed", String(b.dataset.v === S.range));
+  view.classList.add("stale");
+  const fresh = h("section");
+  const draws = [];
+  pendingDraws = draws;
+  try {
+    if (!S.state) throw new Error("后台还没连上");
+    if (S.tab === "meeting") await renderMeeting(fresh);
+    else if (S.tab === "terminal") await renderTerminal(fresh);
+    else if (S.tab === "path") await renderPath(fresh);
+    else if (S.tab === "table") await renderTable(fresh);
+    else renderData(fresh);
+  } catch (e) {
+    console.error(e);
+    fresh.append(h("div", { class: "card empty" }, "出错了：" + e.message));
+  }
+  if (seq !== renderSeq) return;  // 用户又点了别的，这一轮作废
+  fresh.id = "view";
+  document.getElementById("view").replaceWith(fresh);
+  for (const fn of draws) fn();
+  writeHash();
+}
+
+// 网址记住当前视图：#tab=meeting&meeting=2027-03-17 这种，可以收藏
+const HASH_KEYS = ["tab", "source", "range", "meeting", "view", "mode", "horizon", "asof", "theme"];
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  for (const k of HASH_KEYS) if (p.get(k)) S[k] = p.get(k);
+  if (!["meeting", "terminal", "path", "table", "data"].includes(S.tab)) S.tab = "meeting";
+  if (!["calc", "cme"].includes(S.source)) S.source = "calc";
+  if (!["all", "180", "90", "30"].includes(S.range)) S.range = "all";
+  if (S.theme === "dark" || S.theme === "light") document.documentElement.dataset.theme = S.theme;
+}
+function writeHash() {
+  const p = new URLSearchParams();
+  p.set("tab", S.tab);
+  if (S.source !== "calc") p.set("source", S.source);
+  if (S.range !== "all") p.set("range", S.range);
+  if (S.tab === "meeting" && S.meeting) p.set("meeting", S.meeting);
+  if ((S.tab === "meeting" || S.tab === "terminal") && S.view !== "area") p.set("view", S.view);
+  if (S.tab === "terminal") {
+    if (S.mode !== "peak") p.set("mode", S.mode);
+    if (S.horizon) p.set("horizon", S.horizon);
+  }
+  if (S.tab === "table" && S.asof) p.set("asof", S.asof);
+  if (S.theme) p.set("theme", S.theme);
+  history.replaceState(null, "", "#" + p.toString());
+}
+
+async function loadState() {
+  S.state = await api("/api/state");
+  S.busy = !!S.state.busy;
+  renderHeader();
+}
+async function refreshAll() {
+  cache.clear();
+  await loadState();
+  await renderTiles();
+  await render();
+}
+
+async function post(path) {
+  const r = await api(path, { method: "POST" });
+  if (!r.ok) { alert(r.error); return; }
+  S.busy = true;
+  poll();
+}
+let pollTimer = null;
+function poll() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    try { await loadState(); } catch (e) { return; }
+    if (S.tab === "data") render();
+    if (!S.busy) {
+      clearInterval(pollTimer); pollTimer = null;
+      await refreshAll();
+    }
+  }, 1500);
+}
+
+document.getElementById("btnUpdate").addEventListener("click", () => post("/api/update"));
+document.getElementById("btnImport").addEventListener("click", () => post("/api/import"));
+document.getElementById("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.tab = b.dataset.tab; render(); } });
+document.getElementById("fSource").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.source = b.dataset.v; render(); } });
+document.getElementById("fRange").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.range = b.dataset.v; render(); } });
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 200); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => render());
+
+readHash();
+refreshAll().then(() => { if (S.busy) poll(); }).catch(e => {
+  document.getElementById("status").textContent = "连不上后台：" + e.message;
+});
+</script>
+</body>
+</html>
