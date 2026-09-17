@@ -2,21 +2,28 @@
 
 db_path: data/fedwatch.sqlite
 
+# 原始数据的 CSV 存档（云端每次从这里重建数据库，再写回）
+archive_dir: data/archive
+
 # 从 CME 官网 FedWatch「Historical → Downloads」下载的 Excel 放进这个文件夹，
-# 每天的抓取任务会自动导入（也可以在看板上点「导入官方文件」）
+# 每次运行会自动导入（本地看板上也可以点「导入官方文件」）
 cme_download_dir: data/cme_downloads
+
+# 本机每日任务的价格源：yahoo（能回溯，需要能访问 Yahoo）或 tradingview（只有最近两天）。
+# 云端任务（python -m fedwatch cloud）固定用 tradingview。
+price_source: yahoo
 
 # 第一次 bootstrap 向 Yahoo 要多长历史。注意 Yahoo 只保留还没到期的合约，
 # 所以能回算出完整概率的日子其实只有最近一两个月，更早的要靠 CME 官方下载
 bootstrap_range: 2y
 
-# 每天抓取回看多长（顺便补齐之前漏跑的日子，电脑关机几天也不会丢数据）
+# 本机每天抓取回看多长（顺便补齐之前漏跑的日子）
 daily_range: 3mo
 
-# 最多往后找多少个月的合约（Yahoo 目前大约列到 18 个月）
+# Yahoo 最多往后找多少个月的合约（它目前大约列到 18 个月）
 months_ahead: 30
 
-# 看板端口（ETF 监控占了 8765）
+# 本地看板端口
 port: 8766
 
 # 现行目标区间。纽约联储的数据晚一天发布，会议刚开完那一两天程序会用当月期货反推决议；
