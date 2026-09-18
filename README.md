@@ -62,7 +62,7 @@ FedWatch 9/17：10/28 会议 加息 55%（+7pp），不变 45%
 - Yahoo 在国内直连返回 403，程序跟随 Windows 系统代理，抓取时代理要开着。
 - **自算历史从 2026-07-29 开始**：更早的日子要用到已经到期的合约，免费源查不到。往后每天累积。
 - **会议刚开完的一两天**：纽约联储还没更新区间，程序用当月合约反推决议（例如 9/16 反推为加息 25bp），看板顶部和摘要里都会注明；官方数据一到自动改用。万一反推错了，在 `config.yaml` 填 `target_override: [下限, 上限]`。
-- 原始数据每天顺手导出一份 CSV 到 `data/archive/`，数据库坏了可以从它重建（`python -m fedwatch recompute`）。
+- 本机每天顺手把原始数据导出一份 CSV 到 `data/backup/`（不进仓库）；`data/archive/` 那份由云端任务维护并提交回仓库。数据库坏了，删掉 `data/fedwatch.sqlite` 再 `python -m fedwatch cloud` 就能从 CSV 重建。
 
 ## 导入 CME 官方历史
 

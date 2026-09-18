@@ -68,8 +68,11 @@ def main(argv=None) -> int:
         tracker = Tracker(cfg, store)
         if args.cmd in ("bootstrap", "daily"):
             res = safe_update(tracker, bootstrap=args.cmd == "bootstrap")
-            try:  # 顺手把原始数据存一份 CSV，数据库坏了还能重建
-                archive.write(store, cfg.archive_dir)
+            # 顺手把原始数据存一份 CSV，数据库坏了还能重建。
+            # 写 data/backup（gitignore 掉）而不是 data/archive：后者由云端任务提交回仓库，
+            # 两边都改同一个文件的话 git pull 会冲突。
+            try:
+                archive.write(store, cfg.backup_dir)
             except OSError as exc:
                 print(f"  [!] 写 CSV 存档失败：{exc}")
             for e in res.get("errors", []):

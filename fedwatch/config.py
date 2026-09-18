@@ -20,6 +20,7 @@ class Config:
     request: dict = field(default_factory=dict)
     price_source: str = "yahoo"
     archive_dir: Path = ROOT / "data" / "archive"
+    backup_dir: Path = ROOT / "data" / "backup"
     digest: dict = field(default_factory=dict)
 
     @classmethod
@@ -49,5 +50,6 @@ class Config:
             request=dict(raw.get("request") or {}),
             price_source=str(raw.get("price_source") or "yahoo"),
             archive_dir=p("archive_dir", "data/archive"),
+            backup_dir=p("backup_dir", "data/backup"),
             digest=dict(raw.get("digest") or {}),
         )

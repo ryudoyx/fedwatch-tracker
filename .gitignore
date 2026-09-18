@@ -7,3 +7,5 @@ _site/
 # 数据库每次从 data/archive/*.csv 重建，不进仓库
 data/fedwatch.sqlite
 data/fedwatch.sqlite-*
+# 本机每日任务导出的 CSV 备份（data/archive 由云端任务维护）
+data/backup/
