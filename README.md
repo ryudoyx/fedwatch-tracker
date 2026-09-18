@@ -13,6 +13,7 @@
 | 手动抓最新 | 看板右上角「抓最新数据」 |
 | 补一年官方历史 | 见下面「导入 CME 官方历史」 |
 | 换台电脑从头装 | 双击 `安装依赖.bat`（建环境 + 回算历史，约 1 分钟） |
+| 在线看（手机也能看） | 部署一次到 GitHub，见下面「挂到 GitHub」 |
 
 ## 每天早上 8 点的推送
 
@@ -121,7 +122,24 @@ fedwatch/
 daily_fetch.bat  定时任务入口（抓数 → 摘要通知；失败弹警告，日志在 logs/）
 ```
 
-想挂到网上（GitHub Pages 每天自动更新、手机也能看）的话，`.github/workflows/fedwatch.yml` 和 `python -m fedwatch cloud` 已经写好了，部署步骤三步：建公开仓库 → Settings → Pages 的 Source 选 GitHub Actions → push。云端用 TradingView 取价（GitHub 的服务器访问 Yahoo 会被拒）。
+## 挂到 GitHub
+
+`.github/workflows/fedwatch.yml` 每个交易日跑一次（23:47 UTC = 北京 07:47）：读 `data/archive/*.csv` → 抓 TradingView 和纽约联储 → 写回 CSV 提交 → 全部重算 → 发布静态网页到 GitHub Pages。仓库里只存 CSV 文本，数据库不进仓库。
+
+部署（只做一次）：
+
+1. 在 GitHub 新建一个 **Public** 空仓库（Pages 免费版要求公开）
+2. `git remote add origin https://github.com/<你>/<仓库>.git` 然后 `git push -u origin main`
+3. 仓库 Settings → Pages → Build and deployment → Source 选 **GitHub Actions**
+4. Actions → fedwatch → Run workflow 跑一次，几分钟后网页在 `https://<你>.github.io/<仓库>/`
+
+之后：
+
+- 上传 CME 官方下载：仓库里进 `data/cme_downloads/` → Add file → Upload files，提交后自动导入并更新网页
+- 手动跑一次：Actions → fedwatch → Run workflow
+- 抓取出问题时网页照样用已有数据发布，但那一轮会标红，GitHub 会发邮件
+- 云端用 TradingView 取价：GitHub 的服务器访问 Yahoo 会被 429 拒掉（本项目不做浏览器指纹伪装那一套绕过）
+- 本机的 8 点推送和云端互不影响，各抓各的
 
 ## 相关项目
 
