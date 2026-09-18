@@ -10,7 +10,7 @@ import json
 import shutil
 from pathlib import Path
 
-from . import analysis
+from . import analysis, digest
 from .config import Config
 from .store import Store
 
@@ -35,7 +35,8 @@ def export(store: Store, cfg: Config, out: Path, repo_url: str | None = None) ->
     st = analysis.state(store, cfg)
     st.update({"static": True, "busy": None, "logs": [], "cme_dir": "data/cme_downloads", "repo_url": repo_url})
     _dump(out / "data" / "state.json", st)
-    n += 1
+    _dump(out / "data" / "digest.json", digest.build(store, cfg) or {})
+    n += 2
     for source in analysis.SOURCES:
         dates = [r[0] for r in store.q("SELECT asof FROM runs WHERE source=? ORDER BY asof", (source,))]
         if not dates:

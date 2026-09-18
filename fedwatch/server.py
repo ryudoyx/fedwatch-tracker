@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import analysis
+from . import analysis, digest
 from .config import Config
 from .pipeline import Tracker, safe_update
 from .store import Store
@@ -91,6 +91,8 @@ def make_handler(app: App):
                     out["busy"] = app.busy
                     out["logs"] = list(app.logs)[-40:]
                     return self._json(out)
+                if url.path == "/api/digest":
+                    return self._json(digest.build(st, app.cfg) or {})
                 if url.path == "/api/meeting":
                     return self._json(analysis.meeting_series(st, source, q.get("meeting", "")))
                 if url.path == "/api/snapshot":

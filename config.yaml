@@ -9,9 +9,11 @@ archive_dir: data/archive
 # 每次运行会自动导入（本地看板上也可以点「导入官方文件」）
 cme_download_dir: data/cme_downloads
 
-# 本机每日任务的价格源：yahoo（能回溯，需要能访问 Yahoo）或 tradingview（只有最近两天）。
-# 云端任务（python -m fedwatch cloud）固定用 tradingview。
-price_source: yahoo
+# 本机每日任务的价格源：
+#   both        Yahoo 补历史 + TradingView 覆盖最近两天（推荐）
+#   yahoo       只用 Yahoo：能回溯两年，但早上 8 点抓时当天收盘价可能还没修正成结算价
+#   tradingview 只用 TradingView：拿到的就是结算价，但只有最近两个交易日
+price_source: both
 
 # 第一次 bootstrap 向 Yahoo 要多长历史。注意 Yahoo 只保留还没到期的合约，
 # 所以能回算出完整概率的日子其实只有最近一两个月，更早的要靠 CME 官方下载
@@ -30,6 +32,13 @@ port: 8766
 # 万一反推错了，在这里手工写上最近一次会议后的区间，例如 [3.75, 4.00]。
 # 等纽约联储数据更新后记得改回 null。
 target_override: null
+
+# 每天早上的摘要（弹窗通知 + 看板顶部卡片 + logs/digest_*.txt）
+digest:
+  # 重点盯哪几次会议。留空 = 自动取"下次会议"和"半年后那次"
+  focus_meetings: ["2027-03-17"]
+  # 单日某个区间概率变动超过这么多个百分点，就在摘要里点出来
+  move_threshold: 3.0
 
 request:
   pause: 0.3      # 每个合约请求之间的间隔（秒）

@@ -135,6 +135,9 @@ details[open] summary { margin-bottom: 8px; }
 .empty { padding: 36px 8px; text-align: center; color: var(--ink-2); }
 .prose p { margin: 6px 0; color: var(--ink-2); }
 a { color: var(--accent); }
+ul.digest { margin: 6px 0 10px; padding-left: 18px; }
+ul.digest li { margin: 2px 0; }
+ul.digest li:first-child { color: var(--ink-2); }
 .prose code { font-size: 12.5px; }
 .stale { opacity: .55; transition: opacity .15s; }
 </style>
@@ -151,6 +154,7 @@ a { color: var(--accent); }
   </header>
 
   <div id="notice"></div>
+  <section id="digest"></section>
   <section class="tiles" id="tiles" aria-label="概览"></section>
 
   <div class="filters" role="group" aria-label="筛选">
@@ -232,6 +236,7 @@ function apiPath(path) {
   const v = S.state && S.state.last_update && S.state.last_update.finished
     ? "?v=" + encodeURIComponent(S.state.last_update.finished) : "";
   if (u.pathname === "/api/state") return "data/state.json";
+  if (u.pathname === "/api/digest") return "data/digest.json";
   if (u.pathname === "/api/meeting") return `data/${src}/meeting/${q.get("meeting")}.json${v}`;
   if (u.pathname === "/api/snapshot") return `data/${src}/snapshot/${q.get("asof") || "latest"}.json${v}`;
   if (u.pathname === "/api/terminal") return `data/${src}/terminal/${q.get("mode") || "peak"}-${q.get("horizon") || "default"}.json${v}`;
@@ -573,6 +578,21 @@ function renderHeader() {
   } else if (st.base && st.base.source !== "nyfed") {
     notice.append(h("div", { class: "notice" }, `现行区间来源：${st.base.source}`));
   }
+}
+
+// 今日摘要：和早上 8 点弹窗通知的是同一份内容
+async function renderDigest() {
+  const box = document.getElementById("digest");
+  box.textContent = "";
+  let d;
+  try { d = await cached("/api/digest"); } catch (e) { return; }
+  if (!d || !d.lines || !d.lines.length) return;
+  const card = h("div", { class: "card" },
+    h("h2", null, `今日摘要 · 观察日 ${d.asof}`),
+    h("div", { class: "sub" }, d.prev ? `和上一个观察日 ${d.prev} 比` : "第一天，没有可比的"),
+    h("ul", { class: "digest" }, d.lines.map(t => h("li", null, t))),
+    h("details", null, h("summary", null, "全部会议的逐日变化"), h("div", { class: "log" }, d.full_text)));
+  box.append(card);
 }
 
 async function renderTiles() {
@@ -937,6 +957,7 @@ async function loadState() {
 async function refreshAll() {
   cache.clear();
   await loadState();
+  await renderDigest();
   await renderTiles();
   await render();
 }

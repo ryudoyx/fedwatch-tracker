@@ -182,22 +182,30 @@ class Tracker:
             errors.append(f"EFFR：{exc}")
             self.log(f"  [x] EFFR：{exc}")
 
-        if price_source == "tradingview":
-            got, failed = sources.fetch_zq_tradingview(s, today, log=self.log)
-            label = "TradingView"
+        # both：Yahoo 给历史，TradingView 覆盖最近两天。Yahoo 的日线收盘要到美国当地半夜
+        # 才修正成结算价，早上 8 点抓的话还是盘中最后成交价，所以让 TradingView 盖上去。
+        plan = ["yahoo", "tradingview"] if price_source == "both" else [price_source]
+        ok_sources, all_failed = [], []
+        for src in plan:
+            if src == "tradingview":
+                got, failed = sources.fetch_zq_tradingview(s, today, log=self.log)
+            else:
+                rng = self.cfg.bootstrap_range if bootstrap else self.cfg.daily_range
+                got, failed = sources.fetch_zq(s, today, rng, self.cfg.months_ahead,
+                                               pause=float(self.cfg.request.get("pause", 0.3)), log=self.log)
+            all_failed += failed
+            if not got:
+                continue
+            ok_sources.append(src)
+            n = self.store.upsert_prices(got, src)
+            span = sorted(got, key=fomc.contract_month)
+            days = sorted({d for series in got.values() for d in series})
+            self.log(f"  ZQ 期货：{len(got)} 个合约 {span[0]}~{span[-1]}，{n} 行，"
+                     f"交易日 {days[0]}~{days[-1]}（{src}）")
+        if not ok_sources:
+            errors += all_failed or ["ZQ 期货一个合约都没抓到"]
         else:
-            rng = self.cfg.bootstrap_range if bootstrap else self.cfg.daily_range
-            got, failed = sources.fetch_zq(s, today, rng, self.cfg.months_ahead,
-                                           pause=float(self.cfg.request.get("pause", 0.3)), log=self.log)
-            label = "Yahoo"
-        errors += failed
-        n = self.store.upsert_prices(got, price_source)
-        span = sorted(got, key=fomc.contract_month)
-        days = sorted({d for series in got.values() for d in series})
-        self.log(f"  ZQ 期货：{len(got)} 个合约 {span[0] if span else ''}~{span[-1] if span else ''}，"
-                 f"{n} 行，交易日 {days[0] if days else ''}~{days[-1] if days else ''}（{label}）")
-        if not got and not failed:
-            errors.append("ZQ 期货一个合约都没抓到")
+            warnings += all_failed  # 有一个源成功就够了，另一个失败只记日志
 
         if bootstrap or recompute_all:
             dates = self.store.trade_dates()

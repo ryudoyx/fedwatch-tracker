@@ -22,7 +22,17 @@ echo ===== %date% %time% ===== >> "%LOG%"
 set RC=%ERRORLEVEL%
 echo [%time%] exit code %RC% >> "%LOG%"
 
-rem 2 = some data missing, 1 = crashed. Pop a Windows notification either way.
+rem 2 = some data missing, 1 = crashed. Pop a warning either way.
 rem notify.ps1 does not depend on Python on purpose.
-if not "%RC%"=="0" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0notify.ps1" -Kind fetch_failed -Log "%~dp0%LOG%"
-exit /b %RC%
+if not "%RC%"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0notify.ps1" -Kind fetch_failed -Log "%~dp0%LOG%"
+    exit /b %RC%
+)
+
+rem Morning digest: exit code 3 means nothing new (weekend / already notified).
+set DIGEST=%TEMP%\fedwatch_digest.txt
+%PY% -m fedwatch digest --file "%DIGEST%" >> "%LOG%" 2>&1
+set DRC=%ERRORLEVEL%
+echo [%time%] digest exit code %DRC% >> "%LOG%"
+if "%DRC%"=="0" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0notify.ps1" -Kind digest -File "%DIGEST%"
+exit /b 0

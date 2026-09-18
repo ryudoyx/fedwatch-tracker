@@ -6,8 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-from . import analysis, archive, site
-from .config import Config
+from . import analysis, archive, digest as digest_mod, site
+from .config import ROOT, Config
 from .pipeline import Tracker, safe_update
 from .store import Store
 
@@ -45,6 +45,10 @@ def main(argv=None) -> int:
     sh.add_argument("--meeting", help="只看某次会议，如 2027-03-17")
     sh.add_argument("--asof", help="观察日，默认最新")
     sh.add_argument("--source", default="calc", choices=analysis.SOURCES)
+    dg = sub.add_parser("digest", help="早上的摘要：和上一个观察日比有哪些变化（退出码 3 = 没有新数据，不用通知）")
+    dg.add_argument("--file", help="把「标题+正文」写到这个文件（给 notify.ps1 读）")
+    dg.add_argument("--force", action="store_true", help="同一个观察日已经通知过也照样输出")
+    dg.add_argument("--full", action="store_true", help="终端里打印完整摘要")
     cl = sub.add_parser("cloud", help="云端每日任务：读 CSV 存档 → 抓 TradingView/纽约联储 → 写回存档 → 重算 → 出静态网页")
     cl.add_argument("--site", help="静态网页输出目录，如 _site")
     ex = sub.add_parser("export-site", help="把当前数据库导出成静态网页")
@@ -64,12 +68,32 @@ def main(argv=None) -> int:
         tracker = Tracker(cfg, store)
         if args.cmd in ("bootstrap", "daily"):
             res = safe_update(tracker, bootstrap=args.cmd == "bootstrap")
+            try:  # 顺手把原始数据存一份 CSV，数据库坏了还能重建
+                archive.write(store, cfg.archive_dir)
+            except OSError as exc:
+                print(f"  [!] 写 CSV 存档失败：{exc}")
             for e in res.get("errors", []):
                 print("  [x]", e)
             if res.get("ok"):
                 return 0
             # 1 = 程序崩溃；2 = 跑完了但有部分数据没抓到
             return 1 if any(e.startswith("程序出错") for e in res.get("errors", [])) else 2
+        if args.cmd == "digest":
+            d = digest_mod.build(store, cfg)
+            if not d:
+                print("还没有数据")
+                return 3
+            print(d["full_text"] if args.full else d["title"] + "\n" + d["text"])
+            log_dir = ROOT / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / f"digest_{d['asof']}.txt").write_text(d["full_text"] + "\n", encoding="utf-8")
+            fresh = store.get_meta("digest_notified") != d["asof"]
+            if args.file:
+                Path(args.file).write_text(d["title"] + "\n" + d["text"] + "\n", encoding="utf-8")
+            if not fresh and not args.force:
+                return 3  # 同一个观察日已经通知过（比如手动又跑了一次），别再弹一次
+            store.set_meta("digest_notified", d["asof"])
+            return 0
         if args.cmd == "cloud":
             got = archive.load(store, cfg.archive_dir)
             print(f"读入存档：价格 {got['prices']} 行，EFFR {got['effr']} 行，FOMC {got['fomc']} 个")
