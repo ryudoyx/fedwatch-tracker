@@ -1,0 +1,336 @@
+{
+  "macro": {},
+  "revisions": [],
+  "sep": [
+    {
+      "fetched_at": "2026-10-15 11:29:00",
+      "release_date": "2026-06-17",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260617.htm",
+      "years": [
+        {
+          "dots": [
+            {
+              "count": 1,
+              "rate": 4.375
+            },
+            {
+              "count": 5,
+              "rate": 4.125
+            },
+            {
+              "count": 3,
+              "rate": 3.875
+            },
+            {
+              "count": 8,
+              "rate": 3.625
+            },
+            {
+              "count": 1,
+              "rate": 3.375
+            }
+          ],
+          "max": 4.375,
+          "median": 3.75,
+          "min": 3.375,
+          "participants": 18,
+          "year": "2026"
+        },
+        {
+          "dots": [
+            {
+              "count": 1,
+              "rate": 4.375
+            },
+            {
+              "count": 2,
+              "rate": 4.125
+            },
+            {
+              "count": 5,
+              "rate": 3.875
+            },
+            {
+              "count": 2,
+              "rate": 3.625
+            },
+            {
+              "count": 3,
+              "rate": 3.375
+            },
+            {
+              "count": 4,
+              "rate": 3.125
+            },
+            {
+              "count": 1,
+              "rate": 2.875
+            }
+          ],
+          "max": 4.375,
+          "median": 3.625,
+          "min": 2.875,
+          "participants": 18,
+          "year": "2027"
+        },
+        {
+          "dots": [
+            {
+              "count": 3,
+              "rate": 3.875
+            },
+            {
+              "count": 5,
+              "rate": 3.625
+            },
+            {
+              "count": 2,
+              "rate": 3.375
+            },
+            {
+              "count": 6,
+              "rate": 3.125
+            },
+            {
+              "count": 1,
+              "rate": 2.875
+            }
+          ],
+          "max": 3.875,
+          "median": 3.375,
+          "min": 2.875,
+          "participants": 17,
+          "year": "2028"
+        },
+        {
+          "dots": [
+            {
+              "count": 1,
+              "rate": 3.875
+            },
+            {
+              "count": 1,
+              "rate": 3.75
+            },
+            {
+              "count": 1,
+              "rate": 3.625
+            },
+            {
+              "count": 1,
+              "rate": 3.5
+            },
+            {
+              "count": 2,
+              "rate": 3.375
+            },
+            {
+              "count": 1,
+              "rate": 3.25
+            },
+            {
+              "count": 2,
+              "rate": 3.125
+            },
+            {
+              "count": 7,
+              "rate": 3.0
+            },
+            {
+              "count": 2,
+              "rate": 2.875
+            }
+          ],
+          "max": 3.875,
+          "median": 3.0625,
+          "min": 2.875,
+          "participants": 18,
+          "year": "Longer run"
+        }
+      ]
+    },
+    {
+      "fetched_at": "2026-10-15 11:29:00",
+      "release_date": "2026-09-16",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260916.htm",
+      "years": [
+        {
+          "dots": [
+            {
+              "count": 4,
+              "rate": 4.375
+            },
+            {
+              "count": 12,
+              "rate": 4.125
+            },
+            {
+              "count": 2,
+              "rate": 3.875
+            }
+          ],
+          "max": 4.375,
+          "median": 4.125,
+          "min": 3.875,
+          "participants": 18,
+          "year": "2026"
+        },
+        {
+          "dots": [
+            {
+              "count": 8,
+              "rate": 4.375
+            },
+            {
+              "count": 6,
+              "rate": 4.125
+            },
+            {
+              "count": 3,
+              "rate": 3.625
+            },
+            {
+              "count": 1,
+              "rate": 3.125
+            }
+          ],
+          "max": 4.375,
+          "median": 4.125,
+          "min": 3.125,
+          "participants": 18,
+          "year": "2027"
+        },
+        {
+          "dots": [
+            {
+              "count": 4,
+              "rate": 4.125
+            },
+            {
+              "count": 5,
+              "rate": 3.875
+            },
+            {
+              "count": 3,
+              "rate": 3.625
+            },
+            {
+              "count": 1,
+              "rate": 3.375
+            },
+            {
+              "count": 4,
+              "rate": 3.125
+            }
+          ],
+          "max": 4.125,
+          "median": 3.875,
+          "min": 3.125,
+          "participants": 17,
+          "year": "2028"
+        },
+        {
+          "dots": [
+            {
+              "count": 3,
+              "rate": 3.875
+            },
+            {
+              "count": 7,
+              "rate": 3.625
+            },
+            {
+              "count": 2,
+              "rate": 3.375
+            },
+            {
+              "count": 4,
+              "rate": 3.125
+            },
+            {
+              "count": 1,
+              "rate": 2.875
+            }
+          ],
+          "max": 3.875,
+          "median": 3.625,
+          "min": 2.875,
+          "participants": 17,
+          "year": "2029"
+        },
+        {
+          "dots": [
+            {
+              "count": 2,
+              "rate": 3.875
+            },
+            {
+              "count": 1,
+              "rate": 3.75
+            },
+            {
+              "count": 2,
+              "rate": 3.625
+            },
+            {
+              "count": 2,
+              "rate": 3.5
+            },
+            {
+              "count": 1,
+              "rate": 3.375
+            },
+            {
+              "count": 2,
+              "rate": 3.25
+            },
+            {
+              "count": 1,
+              "rate": 3.125
+            },
+            {
+              "count": 6,
+              "rate": 3.0
+            },
+            {
+              "count": 1,
+              "rate": 2.875
+            }
+          ],
+          "max": 3.875,
+          "median": 3.25,
+          "min": 2.875,
+          "participants": 18,
+          "year": "Longer run"
+        }
+      ]
+    }
+  ],
+  "status": {
+    "CPIAUCNS": {
+      "attempted_at": "2026-10-15 11:27:53",
+      "error": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCNS&cosd=2022-01-01 请求失败：HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+    },
+    "CPIAUCSL": {
+      "attempted_at": "2026-10-15 11:28:09",
+      "error": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL&cosd=2022-01-01 请求失败：HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+    },
+    "PAYEMS": {
+      "attempted_at": "2026-10-15 11:28:43",
+      "error": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PAYEMS&cosd=2022-01-01 请求失败：HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+    },
+    "PCEPILFE": {
+      "attempted_at": "2026-10-15 11:28:26",
+      "error": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCEPILFE&cosd=2022-01-01 请求失败：HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+    },
+    "UNRATE": {
+      "attempted_at": "2026-10-15 11:28:59",
+      "error": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=UNRATE&cosd=2022-01-01 请求失败：HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+    },
+    "sep": {
+      "error": null,
+      "latest_release": "20260916",
+      "updated_at": "2026-10-15 11:29:00"
+    }
+  }
+}
