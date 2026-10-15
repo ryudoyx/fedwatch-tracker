@@ -1065,8 +1065,9 @@ async function renderMacro(view) {
     const chart=h("div");card.append(chart);deferDraw(()=>lineChart(chart,{xs,series:[{name:m.label,color:"var(--accent)",values}],
       yFmt:v=>fmt(v,m.unit),height:210,tipTitle:t=>new Date(t).toISOString().slice(0,7),xFmt:t=>new Date(t).toISOString().slice(2,7),
       ...(m.series==="PAYEMS"?{ref:{value:0,label:"零增长"}}:{})}));
-    card.append(h("p",{class:"sub"},`${m.source.owner}，经 FRED · 获取于 ${m.source.fetched_at}（北京） · `,sourceLink(m.source.url,"原始序列"),
+    card.append(h("p",{class:"sub"},`${m.source.owner} · ${m.source.provider||"FRED"} · 获取于 ${m.source.fetched_at}（北京） · `,sourceLink(m.source.url,"原始序列"),
       m.secondary_source?h("span",null," · ",sourceLink(m.secondary_source,"季调环比序列")):null));
+    if(m.source.provider==="BLS API") card.append(h("p",{class:"sub"},`${m.source.current_from.slice(0,7)} 以前的历史沿用已存档版本。`));
     card.append(h("details",null,h("summary",null,"查看所选期间数值"),h("div",{class:"scroll"},h("table",null,
       h("thead",null,h("tr",null,h("th",null,"数据月份"),h("th",null,`${m.definition}（${m.unit}）`))),
       h("tbody",null,[...indices].reverse().map(i=>h("tr",null,h("td",null,dates[i].slice(0,7)),h("td",null,fmt(m.trend[i].value,m.unit)))))))));

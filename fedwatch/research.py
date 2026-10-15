@@ -7,6 +7,7 @@ import io
 import math
 import re
 import statistics
+import zipfile
 from html.parser import HTMLParser
 from urllib.parse import urljoin
 
@@ -20,6 +21,9 @@ SERIES = {
     "PAYEMS": {"owner": "BLS", "label": "非农就业人数（季调，千人）"},
     "UNRATE": {"owner": "BLS", "label": "失业率（季调，%）"},
 }
+BLS_IDS = {"CPIAUCNS": "CUUR0000SA0", "CPIAUCSL": "CUSR0000SA0",
+           "PAYEMS": "CES0000000001", "UNRATE": "LNS14000000"}
+BEA_WORKBOOK = "https://apps.bea.gov/national/Release/XLS/Survey/Section2All_xls.xlsx"
 
 
 class Tables(HTMLParser):
@@ -107,6 +111,71 @@ def parse_series(text: str, series: str, today: dt.date) -> list[dict]:
     return [{"date": k, "value": v} for k, v in sorted(result.items())]
 
 
+def parse_bls(payload: dict, series: str, today: dt.date) -> list[dict]:
+    if not isinstance(payload,dict) or payload.get("status") != "REQUEST_SUCCEEDED":
+        raise ValueError("BLS API 未返回成功状态")
+    rows = next((r["data"] for r in payload.get("Results", {}).get("series", [])
+                 if r.get("seriesID") == BLS_IDS[series]), None)
+    if not rows:
+        raise ValueError("BLS API 没有对应序列")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["observation_date", series])
+    for row in rows:
+        if re.fullmatch(r"M(0[1-9]|1[0-2])", row.get("period", "")):
+            if str(row.get("value", "")).strip() in ("", "-", "--", "."):
+                continue  # BLS 的横杠为未发布月份，不是零值。
+            writer.writerow([f"{row['year']}-{row['period'][1:]}-01", str(row["value"]).replace(",", "")])
+    return parse_series(buffer.getvalue(), series, today)
+
+
+def parse_bea(content: bytes, today: dt.date) -> list[dict]:
+    import openpyxl
+
+    try:
+        workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except (zipfile.BadZipFile, openpyxl.utils.exceptions.InvalidFileException) as exc:
+        raise ValueError("BEA 返回内容不是可读取的官方工作簿") from exc
+    try:
+        sheet = workbook["T20804-M"]
+        rows = list(sheet.iter_rows(values_only=True))
+        if len(rows)<9 or "2017=100" not in str(rows[1][0]) or "seasonally adjusted" not in str(rows[1][0]).lower():
+            raise ValueError("BEA 核心 PCE 指数基期或季调口径变化")
+        headers = next(row for row in rows if any(re.fullmatch(r"20\d{2}M\d{2}",str(c)) for c in row))
+        core = next(row for row in rows if len(row)>2 and row[2]=="DPCCRG")
+        if "PCE excluding food and energy" not in str(core[1]):
+            raise ValueError("BEA 核心 PCE 行标识不符")
+        buffer=io.StringIO()
+        writer=csv.writer(buffer)
+        writer.writerow(["observation_date", "PCEPILFE"])
+        for period,value in zip(headers,core):
+            match=re.fullmatch(r"(20\d{2})M(\d{2})",str(period))
+            if match and int(match[1])>=today.year-4 and isinstance(value,(int,float)):
+                writer.writerow([f"{match[1]}-{match[2]}-01",value])
+        return parse_series(buffer.getvalue(),"PCEPILFE",today)
+    finally:
+        workbook.close()
+
+
+def fetch_macro(session, series: str, today: dt.date) -> tuple[list[dict],str,str]:
+    """BLS／BEA 直连优先，FRED 为备用；均不需要 API Key。"""
+    try:
+        if series in BLS_IDS:
+            url=f"https://api.bls.gov/publicAPI/v2/timeseries/data/{BLS_IDS[series]}?startyear={today.year-2}&endyear={today.year}"
+            response=sources._get(session,url,retries=1,timeout=15)
+            return parse_bls(response.json(),series,today),url,"BLS API"
+        response=sources._get(session,BEA_WORKBOOK,retries=1,timeout=25)
+        return parse_bea(response.content,today),BEA_WORKBOOK,"BEA NIPA"
+    except (sources.SourceError, ValueError, KeyError, StopIteration, OSError) as primary_error:
+        url=f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}&cosd={today.year-4}-01-01"
+        try:
+            response=sources._get(session,url,retries=1,timeout=10)
+            points=parse_series(response.content.decode("utf-8-sig"),series,today)
+            return points,f"https://fred.stlouisfed.org/series/{series}","FRED"
+        except (sources.SourceError, UnicodeError, ValueError, KeyError) as fallback_error:
+            raise sources.SourceError(f"官方直连：{primary_error}；FRED 备用：{fallback_error}") from fallback_error
+
+
 def refresh(store, session) -> list[str]:
     today = dt.datetime.now(BEIJING).date()
     data = store.get_meta("research_data", {})
@@ -114,10 +183,8 @@ def refresh(store, session) -> list[str]:
     revisions = data.setdefault("revisions", [])
     warnings = []
     for series, spec in SERIES.items():
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}&cosd={today.year-4}-01-01"
         try:
-            response = sources._get(session, url, retries=1, timeout=15)
-            observations = parse_series(response.content.decode("utf-8-sig"), series, today)
+            observations, url, provider = fetch_macro(session, series, today)
             old = {r["date"]: r["value"] for r in macro.get(series, {}).get("observations", [])}
             if old and observations[-1]["date"] < max(old):
                 raise ValueError("返回的数据期早于已保存版本，不覆盖已有序列")
@@ -127,8 +194,12 @@ def refresh(store, session) -> list[str]:
                 if before is not None and abs(before - point["value"]) > 1e-9:
                     revisions.append({"series": series, "period": point["date"], "before": before,
                                       "after": point["value"], "captured_at": captured})
-            macro[series] = {**spec, "series": series, "observations": observations,
-                             "url": f"https://fred.stlouisfed.org/series/{series}",
+            # 免 Key 的 BLS 接口仅覆盖最近三年，更早历史沿用已存档数据。
+            combined = {d:v for d,v in old.items() if d<observations[0]["date"]}
+            combined.update({r["date"]: r["value"] for r in observations})
+            macro[series] = {**spec, "series": series,
+                             "observations": [{"date": d, "value": v} for d,v in sorted(combined.items())],
+                             "url": url, "provider": provider, "current_from": observations[0]["date"],
                              "fetched_at": captured, "first_captured_at": macro.get(series, {}).get("first_captured_at", captured)}
             status[series] = {"updated_at": captured, "error": None}
         except (sources.SourceError, UnicodeError, ValueError, KeyError) as exc:

@@ -1,5 +1,6 @@
 import datetime as dt
 import tempfile
+import io
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -114,6 +115,30 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(rows[-1]['date'],'2026-02-01')
         with self.assertRaises(ValueError):
             research.parse_series(text.replace('2025-01-01,4.1','2025-01-01,nan'),'UNRATE',dt.date(2026,10,15))
+
+    def test_bls_annual_rows_and_unpublished_months_are_not_zero(self):
+        rows=[{'year':str(2025+i//12),'period':f'M{i%12+1:02d}','value':'100'} for i in range(16)]
+        rows[2]['value']='-'
+        rows.append({'year':'2025','period':'M13','value':'999'})
+        payload={'status':'REQUEST_SUCCEEDED','Results':{'series':[{'seriesID':'CUUR0000SA0','data':rows}]}}
+        points=research.parse_bls(payload,'CPIAUCNS',dt.date(2026,10,15))
+        self.assertEqual(len(points),15)
+        self.assertNotIn('2025-03-01',[r['date'] for r in points])
+        self.assertTrue(all(r['value']==100 for r in points))
+
+    def test_bea_selects_core_pce_not_market_based_core(self):
+        import openpyxl
+        w=openpyxl.Workbook();sheet=w.active;sheet.title='T20804-M'
+        sheet.append(['Table 2.8.4'])
+        sheet.append(['[Index numbers, 2017=100; seasonally adjusted]'])
+        for _ in range(5):sheet.append([])
+        periods=[f'{2025+i//12}M{i%12+1:02d}' for i in range(15)]
+        sheet.append(['Line',None,None,*periods])
+        sheet.append(['25','PCE excluding food and energy','DPCCRG',*[100+i for i in range(15)]])
+        sheet.append(['31','Market-based PCE excluding food and energy','DPCXRG',*[999 for _ in periods]])
+        content=io.BytesIO();w.save(content);w.close()
+        points=research.parse_bea(content.getvalue(),dt.date(2026,10,15))
+        self.assertEqual(points[-1]['value'],114)
 
     def test_refresh_failures_keep_existing_data_and_archive_roundtrips(self):
         raw=self.raw_macro()
