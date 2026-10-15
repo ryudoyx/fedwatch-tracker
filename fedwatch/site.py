@@ -10,7 +10,7 @@ import json
 import shutil
 from pathlib import Path
 
-from . import analysis, digest
+from . import analysis, digest, research
 from .config import Config
 from .store import Store
 
@@ -36,12 +36,17 @@ def export(store: Store, cfg: Config, out: Path, repo_url: str | None = None) ->
     st.update({"static": True, "busy": None, "logs": [], "cme_dir": "data/cme_downloads", "repo_url": repo_url})
     _dump(out / "data" / "state.json", st)
     _dump(out / "data" / "digest.json", digest.build(store, cfg) or {})
-    n += 2
+    _dump(out / "data" / "macro.json", research.macro_scorecard(store))
+    n += 3
     for source in analysis.SOURCES:
         dates = [r[0] for r in store.q("SELECT asof FROM runs WHERE source=? ORDER BY asof", (source,))]
+        base = out / "data" / source
+        _dump(base / "repricing.json", analysis.repricing(store, source))
+        _dump(base / "policy.json", research.policy_book(store, source))
+        _dump(base / "sep.json", research.sep_comparison(store, source))
+        n += 3
         if not dates:
             continue
-        base = out / "data" / source
         for m in st["meetings"]:
             if m.get(source):
                 _dump(base / "meeting" / f"{m['meeting']}.json",

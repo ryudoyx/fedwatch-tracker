@@ -5,7 +5,7 @@ import datetime as dt
 import json
 import traceback
 
-from . import calc, cme_import, fomc, sources
+from . import calc, cme_import, events, fomc, research, sources
 from .config import Config
 from .store import Store, now_str
 
@@ -161,6 +161,11 @@ class Tracker:
         errors: list[str] = []      # 会让每日任务弹通知的
         warnings: list[str] = []    # 只记日志的（比如官网日程没抓到，有内置日程兜底）
         s = sources.session()
+        warnings.extend(events.refresh(self.store, s))
+        research_warnings = research.refresh(self.store, s)
+        warnings.extend(research_warnings)
+        for warning in research_warnings:
+            self.log("  [!] " + warning)
         today = dt.date.today()
         self.log(f"[{started}] {'初始化回算' if bootstrap else '每日更新'}开始")
 

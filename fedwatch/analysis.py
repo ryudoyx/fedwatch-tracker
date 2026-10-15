@@ -5,7 +5,7 @@ import bisect
 import datetime as dt
 from collections import defaultdict
 
-from . import calc, fomc
+from . import calc, events, fomc
 from .store import Store
 
 SOURCES = ("calc", "cme")
@@ -39,6 +39,9 @@ def state(store: Store, cfg) -> dict:
     out["meetings"] = meetings_list(store)
     out["fomc"] = sorted(set(fomc.BUILTIN_MEETINGS) | set(store.fomc_dates()))
     out["last_update"] = store.get_meta("last_update")
+    out["quality"] = quality(store)
+    out["events"] = events.calendar(store, cfg)
+    out["event_status"] = store.get_meta("event_status", {})
     out["imports"] = [dict(r) for r in store.q("SELECT * FROM imports ORDER BY imported_at DESC LIMIT 20")]
     return out
 
@@ -159,7 +162,7 @@ def terminal(store: Store, source: str, horizon: str | None = None, mode: str = 
             d = r["delta_bp"] if r["delta_bp"] is not None else (r["exp_lower"] - prev) * 100
             prev = r["exp_lower"]
             steps.append(calc.split_steps(d))
-        ext = calc.extreme_distribution(steps, mode)
+        ext = calc.extreme_distribution(steps, mode, base)
         dist = {int(round((base + k * calc.STEP) * 100)): p for k, p in ext.items()}
         pick = max if mode == "peak" else min
         best = pick(rows, key=lambda r: r["exp_lower"])
@@ -173,8 +176,87 @@ def terminal(store: Store, source: str, horizon: str | None = None, mode: str = 
     ranges = sorted({bp for d in dists for bp, p in d.items() if p >= 0.0005})
     return {
         "source": source, "mode": mode, "horizon": horizon, "dates": dates, "ranges": ranges,
+        "model_note": ("基于官方各会议期望值重建独立步进模型；边际分布不能唯一确定联合路径，"
+                       "本页极值分布为模型推导，并非 CME 官方路径概率。" if source == "cme" else
+                       "基于独立步进概率树推导，目标区间下限限制为零。"),
         "probs": {str(bp): [d.get(bp, 0.0) for d in dists] for bp in ranges},
         "base_lower": bases, "exp_extreme": exp_ext, "path_extreme": path_ext,
         "path_extreme_meeting": path_meeting,
         "horizons": sorted({r["meeting"] for r in (by_asof[runs[-1]["asof"]] if runs else [])}),
     }
+
+
+def quality(store):
+    """Same-observation-day comparison; not a claim of simultaneous quotes."""
+    latest = store.q("SELECT MAX(asof) FROM runs WHERE source='calc'")[0][0]
+    valid = store.q("SELECT MAX(asof) FROM runs WHERE source='calc' AND (problems IS NULL OR problems IN ('','[]','{}'))")[0][0]
+    prices = [dict(r) for r in store.q(
+        "SELECT source,trade_date,COUNT(*) AS contracts,MAX(updated_at) AS fetched_at FROM prices "
+        "WHERE trade_date=(SELECT MAX(trade_date) FROM prices) GROUP BY source,trade_date")]
+    warnings = []
+    if latest and valid != latest:
+        warnings.append(f"最新计算有缺口；上次无缺口观察日 {valid or '无'}")
+    if latest and (dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date() - dt.date.fromisoformat(latest)).days > 7:
+        warnings.append("观察日超过七天，请检查更新任务")
+    invalid = store.q("SELECT asof,meeting,SUM(prob) AS total,MIN(prob) AS lo,MAX(prob) AS hi FROM probs "
+                      "WHERE source='calc' AND asof=? GROUP BY asof,meeting HAVING ABS(SUM(prob)-1)>0.0001 OR MIN(prob)<0 OR MAX(prob)>1", (latest,))
+    if invalid:
+        warnings.append(f"{len(invalid)} 次会议概率未归一或越界")
+    day = store.q("SELECT MAX(c.asof) FROM probs c JOIN probs o ON c.asof=o.asof AND c.meeting=o.meeting "
+                  "WHERE c.source='calc' AND o.source='cme'")[0][0]
+    comparison = {"asof": day, "status": "没有同观察日官方数据", "max_gap_pp": None}
+    if day:
+        rows = store.q("SELECT source,meeting,lower_bp,prob FROM probs WHERE asof=?", (day,))
+        by = defaultdict(lambda: defaultdict(dict))
+        for r in rows:
+            by[r['meeting']][r['source']][r['lower_bp']] = r['prob']
+        gaps = []
+        for meeting, sources in by.items():
+            if 'calc' in sources and 'cme' in sources:
+                calc_p, official = sources['calc'], sources['cme']
+                if abs(sum(calc_p.values())-1)>0.0001 or abs(sum(official.values())-1)>0.0001:
+                    continue
+                gap=max(abs(calc_p.get(k,0)-official.get(k,0))*100 for k in set(calc_p)|set(official))
+                gaps.append({'meeting':meeting, 'max_gap_pp':round(gap,2)})
+        comparison={'asof':day,'status':'同观察日对照，报价时点未对齐；差异仅供排查',
+                    'meetings':gaps,'max_gap_pp':max((x['max_gap_pp'] for x in gaps),default=None)}
+    inputs = store.price_inputs(dt.date.fromisoformat(latest)) if latest else []
+    stale = [r for r in inputs if r['age_days'] > 0]
+    if stale:
+        warnings.append(f"最新计算的可用报价中，{len(stale)} 个合约沿用旧交易日报价；详见数据与方法")
+    quotes = [dict(r) for r in store.q(
+        "SELECT q.*,p.source AS adopted_source FROM price_quotes q JOIN prices p "
+        "ON p.trade_date=q.trade_date AND p.contract=q.contract WHERE q.trade_date=? ORDER BY q.contract,q.source",
+        (latest,))] if latest else []
+    by_contract = defaultdict(list)
+    for quote in quotes:
+        by_contract[quote['contract']].append(quote)
+    spreads = [{'contract': k, 'price_gap_bp': round((max(x['close'] for x in v)-min(x['close'] for x in v))*100, 4)}
+               for k,v in by_contract.items() if len(v)>1]
+    return {'latest_valid_asof':valid,'prices':prices,'warnings':warnings,'comparison':comparison,
+            'inputs':inputs,'stale_contracts':len(stale),'quotes':quotes,'source_spreads':spreads}
+
+
+def repricing(store: Store, source: str) -> dict:
+    """绝对预期利率变化，保持同一次会议和同一目标区间下限口径。缺值保持 None。"""
+    snap = snapshot(store, source)
+    if not snap['asof']:
+        return {'asof': None, 'dates': [], 'meetings': [], 'ranking': [], 'comparisons': {}}
+    rows = store.q('SELECT asof,meeting,exp_lower FROM meeting_calc WHERE source=? ORDER BY asof,meeting', (source,))
+    by = defaultdict(dict)
+    for r in rows:
+        by[r['meeting']][r['asof']] = r['exp_lower']
+    dates = snap['dates']
+    ranking, meetings = [], []
+    for m in snap['meetings']:
+        mt = m['meeting']
+        values = by[mt]
+        changes = {}
+        for key in ('1d','1w','1m'):
+            prev = snap['compare'][key]
+            before = values.get(prev['asof']) if prev else None
+            changes[key] = round((m['exp_lower']-before)*100, 4) if before is not None else None
+        ranking.append({'meeting': mt, 'exp_lower': m['exp_lower'], 'changes': changes})
+        meetings.append({'meeting': mt, 'values': [values.get(d) for d in dates]})
+    return {'asof': snap['asof'], 'dates': dates, 'meetings': meetings, 'ranking': ranking,
+            'comparisons': {k: snap['compare'][k]['asof'] if snap['compare'][k] else None for k in ('1d','1w','1m')}}

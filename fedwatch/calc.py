@@ -129,19 +129,21 @@ def compute(asof: dt.date, avg: dict[Month, float], cal: Calendar, base_lower: f
     return Result(asof, base_lower, meetings, problems)
 
 
-def extreme_distribution(step_probs: list[dict[int, float]], mode: str = "peak") -> dict[int, float]:
+def extreme_distribution(step_probs: list[dict[int, float]], mode: str = "peak",
+                         base_lower: float = 0.0) -> dict[int, float]:
     """沿概率树走完这些会议，路径上到达过的最高（peak）/ 最低（trough）步数的分布。
 
     基准区间（0 步）本身也算到达过：如果市场只定价降息，最高点就是当前区间。
     和 FedWatch 同样假设各次会议互相独立。
     """
     pick = max if mode == "peak" else min
+    floor_steps = math.ceil(-base_lower / STEP - 1e-9)
     states: dict[tuple[int, int], float] = {(0, 0): 1.0}
     for sp in step_probs:
         new: dict[tuple[int, int], float] = defaultdict(float)
         for (lvl, ext), p in states.items():
             for k, q in sp.items():
-                nl = lvl + k
+                nl = max(lvl + k, floor_steps)
                 new[(nl, pick(ext, nl))] += p * q
         states = {s: p for s, p in new.items() if p > 1e-12}
     out: dict[int, float] = defaultdict(float)

@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import analysis, digest
+from . import analysis, digest, research
 from .config import Config
 from .pipeline import Tracker, safe_update
 from .store import Store
@@ -93,6 +93,14 @@ def make_handler(app: App):
                     return self._json(out)
                 if url.path == "/api/digest":
                     return self._json(digest.build(st, app.cfg) or {})
+                if url.path == "/api/repricing":
+                    return self._json(analysis.repricing(st, source))
+                if url.path == "/api/policy":
+                    return self._json(research.policy_book(st, source))
+                if url.path == "/api/sep":
+                    return self._json(research.sep_comparison(st, source))
+                if url.path == "/api/macro":
+                    return self._json(research.macro_scorecard(st))
                 if url.path == "/api/meeting":
                     return self._json(analysis.meeting_series(st, source, q.get("meeting", "")))
                 if url.path == "/api/snapshot":

@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS prices (
     PRIMARY KEY (trade_date, contract)
 );
 CREATE INDEX IF NOT EXISTS prices_by_contract ON prices (contract, trade_date);
+CREATE TABLE IF NOT EXISTS price_quotes (
+    trade_date TEXT NOT NULL,
+    contract TEXT NOT NULL,
+    source TEXT NOT NULL,
+    close REAL NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (trade_date, contract, source)
+);
 CREATE TABLE IF NOT EXISTS effr (
     date  TEXT PRIMARY KEY,
     rate  REAL,
@@ -103,6 +111,9 @@ class Store:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(prices)")}
         if "source" not in cols:
             self.conn.execute("ALTER TABLE prices ADD COLUMN source TEXT NOT NULL DEFAULT 'yahoo'")
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO price_quotes SELECT trade_date,contract,source,close,updated_at FROM prices")
 
     def close(self):
         with self.lock:
@@ -120,6 +131,10 @@ class Store:
                  fomc.month_str(fomc.contract_month(code)), px, ts, source)
                 for code, series in data.items() for d, px in series.items()]
         with self.lock, self.conn:
+            self.conn.executemany(
+                "INSERT INTO price_quotes VALUES (?,?,?,?,?) ON CONFLICT(trade_date,contract,source) "
+                "DO UPDATE SET close=excluded.close,fetched_at=excluded.fetched_at",
+                [(r[0], r[1], source, r[3], ts) for r in rows])
             self.conn.executemany(
                 "INSERT INTO prices (trade_date, contract, month, close, updated_at, source) "
                 "VALUES (?,?,?,?,?,?) ON CONFLICT(trade_date, contract) DO UPDATE SET "
@@ -149,12 +164,17 @@ class Store:
 
     def avg_rates(self, asof: dt.date, stale_days: int = 7) -> dict[fomc.Month, float]:
         """asof 当天各合约隐含利率；个别冷门合约当天没成交就用 7 天内最近一次收盘。"""
+        return {fomc.parse_month(r["month"]): round(100.0 - r["close"], 6)
+                for r in self.price_inputs(asof, stale_days)}
+
+    def price_inputs(self, asof: dt.date, stale_days: int = 7) -> list[dict]:
+        """计算实际采用的报价，保留来源、交易日期和获取时间。"""
         lo, hi = (asof - dt.timedelta(days=stale_days)).isoformat(), asof.isoformat()
         rows = self.q(
-            "SELECT month, close FROM prices p WHERE p.trade_date BETWEEN ? AND ? "
+            "SELECT p.* FROM prices p WHERE p.trade_date BETWEEN ? AND ? "
             "AND p.trade_date = (SELECT MAX(q.trade_date) FROM prices q "
             "  WHERE q.contract = p.contract AND q.trade_date BETWEEN ? AND ?)", (lo, hi, lo, hi))
-        return {fomc.parse_month(r["month"]): round(100.0 - r["close"], 6) for r in rows}
+        return [dict(r, age_days=(asof - dt.date.fromisoformat(r["trade_date"])).days) for r in rows]
 
     def effr_on_or_before(self, day: dt.date) -> sqlite3.Row | None:
         rows = self.q("SELECT * FROM effr WHERE date <= ? ORDER BY date DESC LIMIT 1",

@@ -53,6 +53,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
   font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -140,6 +141,15 @@ ul.digest li { margin: 2px 0; }
 ul.digest li:first-child { color: var(--ink-2); }
 .prose code { font-size: 12.5px; }
 .stale { opacity: .55; transition: opacity .15s; }
+.heatmap { width: max-content; min-width: 100%; }
+.heatmap td { padding: 0; border: 1px solid var(--surface); }
+.heatmap th { font-size: 11px; }
+.heatmap button { display: block; width: 24px; height: 24px; border: 0; border-radius: 2px; padding: 0; }
+.heatmap th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.heatmap .missing { background: var(--wash); }
+.movebar { width: 160px; height: 12px; position: relative; background: var(--wash); }
+.movebar::before { content: ''; position: absolute; left: 50%; height: 100%; border-left: 1px solid var(--axis); }
+.movebar i { position: absolute; height: 8px; top: 2px; }
 </style>
 </head>
 <body>
@@ -158,12 +168,12 @@ ul.digest li:first-child { color: var(--ink-2); }
   <section class="tiles" id="tiles" aria-label="概览"></section>
 
   <div class="filters" role="group" aria-label="筛选">
-    <span class="flabel">数据源</span>
+    <span class="flabel" id="sourceLabel">数据源</span>
     <div class="seg" id="fSource">
       <button data-v="calc" aria-pressed="true" title="用 ZQ 期货收盘价按 CME 方法自己算，每天自动更新">自算</button>
       <button data-v="cme" aria-pressed="false" title="从 CME 官网 FedWatch 下载后导入的官方历史">CME 官方导入</button>
     </div>
-    <span class="flabel">观察期</span>
+    <span class="flabel" id="rangeLabel">观察期</span>
     <div class="seg" id="fRange">
       <button data-v="all" aria-pressed="true">全部</button>
       <button data-v="180" aria-pressed="false">近半年</button>
@@ -173,7 +183,12 @@ ul.digest li:first-child { color: var(--ink-2); }
   </div>
 
   <nav class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-tab="policy" aria-selected="false">政策账本</button>
+    <button role="tab" data-tab="sep" aria-selected="false">点阵图对比</button>
+    <button role="tab" data-tab="macro" aria-selected="false">宏观成绩单</button>
     <button role="tab" data-tab="meeting" aria-selected="true">单次会议概率</button>
+    <button role="tab" data-tab="repricing" aria-selected="false">预期重定价</button>
+    <button role="tab" data-tab="events" aria-selected="false">事件对照</button>
     <button role="tab" data-tab="terminal" aria-selected="false">加息终点</button>
     <button role="tab" data-tab="path" aria-selected="false">利率路径</button>
     <button role="tab" data-tab="table" aria-selected="false">全表</button>
@@ -187,8 +202,10 @@ ul.digest li:first-child { color: var(--ink-2); }
 "use strict";
 const NS = "http://www.w3.org/2000/svg";
 const S = {
-  state: null, source: "calc", range: "all", tab: "meeting",
+  state: null, source: "calc", range: "all", tab: "policy",
   meeting: null, horizon: null, mode: "peak", view: "area", asof: null, busy: false, theme: null,
+  repriceMode: "level", compare: "1d", event: null,
+  policyYear: null,
 };
 const cache = new Map();
 
@@ -237,6 +254,10 @@ function apiPath(path) {
     ? "?v=" + encodeURIComponent(S.state.last_update.finished) : "";
   if (u.pathname === "/api/state") return "data/state.json";
   if (u.pathname === "/api/digest") return "data/digest.json";
+  if (u.pathname === "/api/repricing") return `data/${src}/repricing.json${v}`;
+  if (u.pathname === "/api/policy") return `data/${src}/policy.json${v}`;
+  if (u.pathname === "/api/sep") return `data/${src}/sep.json${v}`;
+  if (u.pathname === "/api/macro") return `data/macro.json${v}`;
   if (u.pathname === "/api/meeting") return `data/${src}/meeting/${q.get("meeting")}.json${v}`;
   if (u.pathname === "/api/snapshot") return `data/${src}/snapshot/${q.get("asof") || "latest"}.json${v}`;
   if (u.pathname === "/api/terminal") return `data/${src}/terminal/${q.get("mode") || "peak"}-${q.get("horizon") || "default"}.json${v}`;
@@ -315,16 +336,18 @@ function fmtTick(t, span) {
 function fomcMarkers(svg, x, t0, t1, top, bottom) {
   let lastX = -Infinity;
   const left = x(t0), right = x(t1);
-  for (const d of (S.state && S.state.fomc) || []) {
+  for (const event of (S.state && S.state.events) || []) {
+    const d = event.date;
     const t = dayMs(d);
     if (t < t0 || t > t1 || t0 === t1) continue;
     const xx = x(t);
-    svg.append(s("line", { x1: xx, x2: xx, y1: top, y2: bottom, stroke: "var(--ink)", "stroke-opacity": 0.35, "stroke-width": 1 }));
+    const marker = s("line", { x1: xx, x2: xx, y1: top, y2: bottom, stroke: event.kind === "FOMC" ? "var(--ink)" : "var(--accent-2)", "stroke-opacity": 0.35, "stroke-width": 1, "stroke-dasharray": event.kind === "FOMC" ? "" : "3 3" });
+    const title = s("title"); title.textContent = `${d} · ${event.label}`; marker.append(title); svg.append(marker);
     if (xx - lastX > 70) {
       // 贴着左右边缘的标签往里靠，别压到 y 轴刻度、别出界
       const anchor = xx - left < 36 ? "start" : right - xx < 36 ? "end" : "middle";
       const tx = anchor === "start" ? xx + 4 : anchor === "end" ? xx - 4 : xx;
-      svg.append(stext(tx, top - 6, `FOMC ${md(d)}`, { "text-anchor": anchor }));
+      svg.append(stext(tx, top - 6, `${event.label} ${md(d)}`, { "text-anchor": anchor }));
       lastX = xx;
     }
   }
@@ -447,6 +470,7 @@ function lineChart(root, { xs, series, height = 240, yFmt = rate, ref, xFmt, tip
   const x = t => single ? m.l + pw / 2 : m.l + (t - t0) / (t1 - t0) * pw;
   const all = series.flatMap(se => se.values.filter(v => v != null));
   if (ref) all.push(ref.value);
+  if (!ts.length || !all.length) { root.append(emptyBox("所选期间没有可绘制数据")); return; }
   let lo = Math.min(...all), hi = Math.max(...all);
   const pad = Math.max(0.05, (hi - lo) * 0.12);
   lo = Math.floor((lo - pad) * 8) / 8; hi = Math.ceil((hi + pad) * 8) / 8;
@@ -470,15 +494,20 @@ function lineChart(root, { xs, series, height = 240, yFmt = rate, ref, xFmt, tip
   // 倒序画线，让排在前面的（重点）系列压在最上面；标签按正序放，重点系列优先
   const ends = [];
   for (const se of [...series].reverse()) {
-    const pts = ts.map((t, i) => se.values[i] == null ? null : [x(t), y(se.values[i])]).filter(Boolean);
-    if (!pts.length) continue;
-    svg.append(s("polyline", { points: pts.map(p => p.map(v => v.toFixed(1)).join(",")).join(" "), fill: "none",
-      stroke: se.color, "stroke-width": se.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
-    const last = pts[pts.length - 1];
+    const segments = [[]];
+    ts.forEach((t,i) => {if (se.values[i] == null) {if (segments[segments.length-1].length) segments.push([]);} else segments[segments.length-1].push([x(t),y(se.values[i])]);});
+    const valid = segments.filter(points=>points.length);
+    if (!valid.length) continue;
+    for (const pts of valid) {
+      svg.append(s("polyline", { points: pts.map(p => p.map(v => v.toFixed(1)).join(",")).join(" "), fill: "none",
+        stroke: se.color, "stroke-width": se.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (pts.length === 1) svg.append(s("circle", {cx:pts[0][0],cy:pts[0][1],r:2,fill:se.color}));
+    }
+    const last = valid[valid.length-1].slice(-1)[0];
     svg.append(s("circle", { cx: last[0], cy: last[1], r: 4, fill: se.color, stroke: "var(--surface)", "stroke-width": 2 }));
     ends.unshift({ se, last });
   }
-  const placed = [];
+  const placed = ref ? [y(ref.value)] : [];
   for (const { se, last } of ends) {
     if (placed.some(p => Math.abs(p - last[1]) < 14)) continue;
     placed.push(last[1]);
@@ -560,6 +589,11 @@ function renderHeader() {
   const status = document.getElementById("status");
   const notice = document.getElementById("notice");
   notice.textContent = "";
+  const ql = st.quality || {};
+  for (const warning of ql.warnings || []) notice.append(h("div", {class:"notice"}, warning));
+  if ((ql.prices||[]).length) notice.append(h("div", {class:"notice"}, "价格来源：" + ql.prices.map(p=>`${p.source} · 交易日 ${p.trade_date} · ${p.contracts} 个合约 · 获取于 ${p.fetched_at}（北京时间）`).join("；")));
+  const qc = ql.comparison;
+  if (qc) notice.append(h("div", {class:"notice"}, `官方对账：${qc.status}${qc.asof?' · '+qc.asof:''}${qc.max_gap_pp!=null?' · 最大概率差 '+qc.max_gap_pp+' 个百分点':''}`));
   const lu = st.last_update;
   const parts = [];
   if (st.latest_asof) parts.push(`自算数据截至 ${st.latest_asof}（ZQ 收盘价）`);
@@ -718,6 +752,7 @@ async function renderTerminal(view) {
   if (!first.dates.length) return view.append(emptyBox());
   if (!S.horizon || !horizons.includes(S.horizon)) S.horizon = first.horizon;
   const raw = S.horizon === first.horizon ? first : await cached(`/api/terminal?source=${S.source}&mode=${S.mode}&horizon=${S.horizon}`);
+  if (raw.model_note) view.append(h("div", {class: "notice"}, raw.model_note));
 
   const chips = h("div", { class: "chips", role: "group", "aria-label": "统计到哪次会议为止" },
     horizons.map(mt => h("button", { "aria-pressed": String(mt === S.horizon), onclick: () => { S.horizon = mt; render(); } }, ymd(mt))));
@@ -845,11 +880,225 @@ async function renderTable(view) {
     h("div", { class: "scroll" }, table)));
 }
 
+// ---------- 预期重定价与事件 ----------
+const signedBp = v => v == null ? "—" : Math.abs(v) < 0.05 ? "0.0bp" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}bp`;
+function periodIndices(dates) {
+  const cutoff = S.range === "all" || !dates.length ? -Infinity : dayMs(dates[dates.length - 1]) - Number(S.range) * 86400000;
+  return dates.map((d, i) => dayMs(d) >= cutoff ? i : -1).filter(i => i >= 0);
+}
+function drillMeeting(mt) { S.meeting = mt; S.tab = "meeting"; render(); }
+function changeTable(rows) {
+  const scale = Math.max(1, ...rows.map(r => Math.abs(r.change || 0)));
+  return h("div", {class: "scroll"}, h("table", null,
+    h("thead", null, h("tr", null, ["会议", "预期区间下限", "变化", "方向与幅度"].map(t => h("th", null, t)))),
+    h("tbody", null, rows.map(r => {
+      const width = Math.abs(r.change || 0) / scale * 50;
+      return h("tr", null,
+        h("td", null, h("button", {onclick: () => drillMeeting(r.meeting)}, ymd(r.meeting))),
+        h("td", null, rate(r.exp_lower)), h("td", null, signedBp(r.change)),
+        h("td", null, r.change == null ? "无可比数据" : h("div", {class: "movebar", title: signedBp(r.change)},
+          h("i", {style: `left:${r.change >= 0 ? 50 : 50-width}%;width:${width}%;background:var(${r.change >= 0 ? "--accent-2" : "--accent"})`}))));
+    }))));
+}
+async function renderRepricing(view) {
+  const data = await cached(`/api/repricing?source=${S.source}`);
+  if (!data.asof) return view.append(emptyBox("该数据源暂无预期利率历史"));
+  const indices = periodIndices(data.dates);
+  view.append(h("div", {class: "filters"}, h("span", {class: "flabel"}, "热力图"),
+    segControl([["level", "预期利率"], ["change", "较上个观察日变化"]], S.repriceMode, v => {S.repriceMode = v; render();})));
+  const vals = data.meetings.flatMap(m => indices.map(i => S.repriceMode === "level" ? m.values[i] :
+    i && m.values[i] != null && m.values[i-1] != null ? (m.values[i]-m.values[i-1])*100 : null)).filter(v => v != null);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(Math.abs(lo), Math.abs(hi), 1);
+  const color = v => {
+    if (v == null) return "var(--wash)";
+    const k = S.repriceMode === "level" ? (v-lo)/(hi-lo || 1)*2-1 : v/span;
+    return `color-mix(in srgb, var(${k >= 0 ? "--accent-2" : "--accent"}) ${Math.round(Math.abs(k)*78+8)}%, var(--surface))`;
+  };
+  const card = h("div", {class: "card"}, h("h2", null, "各次会议预期利率的演变"),
+    h("p", {class: "sub"}, S.repriceMode === "level"
+      ? `目标区间下限，%；色阶 ${Number.isFinite(lo) ? lo.toFixed(2) : "—"}（蓝）至 ${Number.isFinite(hi) ? hi.toFixed(2) : "—"}（橙）。空白表示缺失；点击格子查看会议概率。`
+      : `单位 bp；橙色上移、蓝色下移，色阶 ±${span.toFixed(1)}bp。与上一个可用观察日比较；空白表示无可比数据。`));
+  const heat = h("table", {class: "heatmap", "aria-label": "会议与观察日热力图"},
+    h("thead", null, h("tr", null, h("th", null, "会议 / 观察日"), indices.map((i,j) => h("th", {title:data.dates[i]}, j%5 === 0 || j === indices.length-1 ? md(data.dates[i]) : "")))),
+    h("tbody", null, data.meetings.map(m => h("tr", null, h("th", {scope:"row"}, ymd(m.meeting)), indices.map(i => {
+      const v = S.repriceMode === "level" ? m.values[i] : i && m.values[i] != null && m.values[i-1] != null ? (m.values[i]-m.values[i-1])*100 : null;
+      const label = `${data.dates[i]} · ${m.meeting} · ${v == null ? "无数据" : S.repriceMode === "level" ? rate(v) : signedBp(v)}`;
+      return h("td", null, h("button", {style:`background:${color(v)}`, title:label, "aria-label":label, onclick: () => drillMeeting(m.meeting)}, v == null ? "·" : ""));
+    })))));
+  card.append(h("div", {class: "scroll"}, heat)); view.append(card);
+  const rows = data.ranking.map(r => ({...r, change:r.changes[S.compare]})).sort((a,b) => Math.abs(b.change || 0)-Math.abs(a.change || 0));
+  view.append(h("div", {class: "card"}, h("h2", null, "预期利率变化排行"),
+    h("div", {class:"filters"}, segControl([["1d","上个观察日"],["1w","一周前"],["1m","一月前"]], S.compare, v => {S.compare=v; render();})),
+    h("p", {class:"sub"}, `${data.asof} 对比 ${data.comparisons[S.compare] || "无可比观察日"}。按绝对变化排序；正值表示预期利率上移。排行固定比较最新观察日，上方观察期只筛选热力图。`), changeTable(rows)));
+}
+async function renderEvents(view) {
+  const data = await cached(`/api/repricing?source=${S.source}`);
+  if (!data.asof) return view.append(emptyBox("该数据源暂无可用于事件对照的观察日"));
+  const indices = periodIndices(data.dates), start = data.dates[indices[0]];
+  const all = (S.state.events || []).filter(e => e.date >= start && e.date <= data.asof);
+  view.append(h("div", {class:"notice"}, "按美国发布日期，对比事件日收盘与前一个观察日；同日其他信息也会影响价格，变化不代表因果贡献。"));
+  for (const [name,status] of Object.entries(S.state.event_status || {})) if (status.error)
+    view.append(h("div", {class:"notice"}, `${name.toUpperCase()} 日历更新未成功，保留已有记录。上次成功：${status.updated_at || "无"}`));
+  view.append(h("p", {class:"sub"}, "自动日历：FOMC、CPI、非农、PCE。讲话及历史补充可放入 data/events.csv；未取到的事件不会估算日期。"));
+  if (!all.length) return view.append(emptyBox("所选观察期暂无已记录事件"));
+  const eventId = e => `${e.date}|${e.kind}|${e.label}`;
+  if (!all.some(e => eventId(e) === S.event)) S.event = eventId(all[all.length-1]);
+  const event = all.find(e => eventId(e) === S.event);
+  const select = h("select", {"aria-label":"选择事件", onchange:e => {S.event=e.target.value; render();}},
+    [...all].reverse().map(e => h("option", {value:eventId(e)}, `${e.date} · ${e.label}`)));
+  select.value = S.event;
+  view.append(h("div", {class:"filters"}, select,
+    event.url ? h("a", {href:event.url, target:"_blank", rel:"noopener"}, "官方来源") : null));
+  const after = data.dates.indexOf(event.date), before = after-1;
+  if (after < 0 || before < 0 || dayMs(event.date)-dayMs(data.dates[before])>7*86400000)
+    return view.append(emptyBox("缺少事件日收盘或临近的事件前观察日，暂不计算变化"));
+  // 已结束会议仍可从单次会议历史查询，不能只使用最新仍在市的会议列表。
+  const candidates = (S.state.meetings || []).filter(m => m[S.source] && m.meeting > event.date);
+  const histories = await Promise.all(candidates.map(m => cached(`/api/meeting?source=${S.source}&meeting=${m.meeting}`)));
+  const rows = histories.map(m => {
+    const ai=m.dates.indexOf(event.date), bi=m.dates.indexOf(data.dates[before]);
+    return {meeting:m.meeting, exp_lower:ai>=0?m.exp_lower[ai]:null,
+      change:ai>=0 && bi>=0 ? (m.exp_lower[ai]-m.exp_lower[bi])*100:null};
+  }).filter(r=>r.exp_lower!=null).sort((a,b)=>Math.abs(b.change||0)-Math.abs(a.change||0));
+  view.append(h("div", {class:"card"}, h("h2", null, `${event.label} · ${event.date}`),
+    h("p", {class:"sub"}, `${data.dates[before]} → ${event.date}，同一次会议的预期目标区间下限变化。`),
+    rows.length ? changeTable(rows) : emptyBox("该事件缺少后续会议的可比数据")));
+}
+
+// ---------- 政策研究 ----------
+const valueOrDash = (v, suffix="", digits=2) => v == null ? "—" : `${v.toFixed(digits)}${suffix}`;
+function researchTile(label, value, note) {
+  return h("div", {class:"tile"}, h("div",{class:"label"},label),h("div",{class:"value"},value),h("div",{class:"note"},note));
+}
+function sourceLink(url,label="来源") {
+  return url ? h("a",{href:url,target:"_blank",rel:"noopener"},label) : null;
+}
+async function renderPolicy(view) {
+  const data = await cached(`/api/policy?source=${S.source}`);
+  if (!data.asof || !data.years.length) return view.append(emptyBox("缺少完整的年末会议定价，暂不能编制政策账本"));
+  if (!data.years.some(y=>String(y.year)===S.policyYear)) S.policyYear=String(data.years[0].year);
+  const year = data.years.find(y=>String(y.year)===S.policyYear);
+  view.append(h("div",{class:"filters"},h("span",{class:"flabel"},"年末期限"),
+    segControl(data.years.map(y=>[String(y.year),String(y.year)]),S.policyYear,v=>{S.policyYear=v;render();}),
+    h("span",{class:"sub"},`观察日 ${data.asof} · 年内最后一次会议 ${year.meeting}`)));
+  view.append(h("div",{class:"tiles"},
+    researchTile(`${year.year} 年末预期利率`,valueOrDash(year.midpoint,"%",3),"目标区间中点的期望值"),
+    researchTile("从观察日到该年末",signedBp(year.remaining_bp),`相当于净 ${year.net_steps>=0?"+":""}${year.net_steps.toFixed(2)} 次 25bp 变化`),
+    researchTile(`${year.year} 全年净变化`,signedBp(year.calendar_year_bp),`${year.start_basis}：${valueOrDash(year.start_midpoint,"%",3)}`),
+    researchTile("年末预期利率较一周前",signedBp(year.changes['1w'].bp),`比较日 ${year.changes['1w'].asof || "无"}`)));
+  view.append(h("div",{class:"notice"},
+    `25bp 次数是净变化的等价单位，不是实际会议行动次数。${year.realized_bp!=null?`本年已实现 ${signedBp(year.realized_bp)}，尚未实现部分 ${signedBp(year.remaining_bp)}。`:"未来年份的全年变化按相邻两个年末的市场定价之差计算。"}年末按最后一次已公布会议后的区间代表，不包含未计划的临时行动。`));
+  const history = data.history.find(y=>y.year===year.year), indices = periodIndices(data.dates);
+  const xs = indices.map(i=>data.dates[i]), values = indices.map(i=>history.values[i]);
+  const card = h("div",{class:"card"},h("h2",null,`${year.year} 年末利率预期如何变化`),
+    h("p",{class:"sub"},"区间中点，%；横轴为观察日。上方账本采用最新观察日，观察期只筛选历史曲线。"));
+  const chart=h("div"); card.append(chart); view.append(card);
+  deferDraw(()=>lineChart(chart,{xs,series:[{name:`${year.year} 年末`,color:"var(--accent)",values}],
+    yFmt:v=>`${v.toFixed(2)}%`,ref:{value:year.current_midpoint,label:"现行中点"},markers:true}));
+  view.append(h("div",{class:"card"},h("h2",null,"各年政策账本"),h("div",{class:"scroll"},h("table",null,
+    h("thead",null,h("tr",null,["年份","年末预期中点","从现在到年末","全年净变化","年内已实现","较上日","较一周前","较一月前"].map(t=>h("th",null,t)))),
+    h("tbody",null,data.years.map(y=>h("tr",null,h("td",null,y.year),h("td",null,valueOrDash(y.midpoint,"%",3)),
+      h("td",null,signedBp(y.remaining_bp)),h("td",null,signedBp(y.calendar_year_bp)),h("td",null,signedBp(y.realized_bp)),
+      ['1d','1w','1m'].map(k=>h("td",{title:y.changes[k].asof||"无可比数据"},signedBp(y.changes[k].bp))))))))));
+}
+function drawSep(root,data) {
+  root.textContent="";
+  const W=Math.max(600,root.clientWidth||800), H=340, left=56, right=28, top=18, bottom=40;
+  const values=data.years.flatMap(y=>[y.min,y.max,y.market_midpoint,y.previous_median]).filter(v=>v!=null);
+  const lo=Math.floor((Math.min(...values)-0.25)*4)/4, hi=Math.ceil((Math.max(...values)+0.25)*4)/4;
+  const y=v=>top+(hi-v)/(hi-lo)*(H-top-bottom), gap=(W-left-right)/data.years.length;
+  const svg=s("svg",{viewBox:`0 0 ${W} ${H}`,height:H,role:"img","aria-label":"官方点阵图与市场年末预期利率对比"});
+  niceTicks(lo,hi,6).forEach(v=>svg.append(s("line",{x1:left,x2:W-right,y1:y(v),y2:y(v),stroke:"var(--grid)"}),
+    stext(left-8,y(v)+4,`${v.toFixed(2)}%`,{"text-anchor":"end"})));
+  data.years.forEach((point,i)=>{
+    const x=left+gap*(i+0.5), step=Math.min(8,(gap-18)/Math.max(...point.dots.map(d=>d.count)));
+    point.dots.forEach(dot=>{
+      for(let k=0;k<dot.count;k++) {
+        const circle=s("circle",{cx:x+(k-(dot.count-1)/2)*step,cy:y(dot.rate),r:3,fill:"var(--ink-2)"});
+        const title=s("title");title.textContent=`${point.year} · ${dot.rate.toFixed(3)}% · ${dot.count} 位参与者`;circle.append(title);svg.append(circle);
+      }
+    });
+    svg.append(s("line",{x1:x-18,x2:x+18,y1:y(point.median),y2:y(point.median),stroke:"var(--ink)","stroke-width":2}));
+    if(point.previous_median!=null) svg.append(s("circle",{cx:x,cy:y(point.previous_median),r:6,fill:"none",stroke:"var(--accent)","stroke-width":1.5}));
+    if(point.market_midpoint!=null) {
+      const yy=y(point.market_midpoint),mark=s("path",{d:`M ${x} ${yy-7} L ${x+7} ${yy} L ${x} ${yy+7} L ${x-7} ${yy} Z`,fill:"var(--accent-2)",stroke:"var(--surface)","stroke-width":1});
+      const title=s("title");title.textContent=`${point.year} 市场预期 ${point.market_midpoint.toFixed(3)}% · 较 SEP ${signedBp(point.gap_bp)}`;mark.append(title);svg.append(mark);
+    }
+    svg.append(stext(x,H-19,point.year==="Longer run"?"长期":point.year,{"text-anchor":"middle"}),
+      stext(x,H-4,`${point.participants} 人`,{"text-anchor":"middle"}));
+  });
+  root.append(svg);
+}
+async function renderSep(view) {
+  const data=await cached(`/api/sep?source=${S.source}`);
+  if(data.status?.error) view.append(h("div",{class:"notice"},`SEP 更新未成功，使用已保留版本：${data.status.error}`));
+  if(!data.release_date) return view.append(emptyBox("尚未取得官方点阵图；抓取成功后会显示逐档人数与市场对比"));
+  view.append(h("p",{class:"sub"},`官方 SEP 发布于 ${data.release_date} · 市场观察日 ${data.asof||"无"} · `,sourceLink(data.url,"美联储原始表格")));
+  const card=h("div",{class:"card"},h("h2",null,"市场年末定价与官员点位"),
+    h("p",{class:"sub"},"统一使用目标区间中点。每个灰点代表一位参与者的政策判断；点位人数不是事件概率。市场菱形为期货模型的期望值，未覆盖期限留空。"),
+    legend([{label:"本版官员点位／中位数横线",color:"var(--ink-2)"},{label:"市场预期（菱形）",color:"var(--accent-2)"},
+      ...(data.previous_release?[{label:`上版中位数 ${data.previous_release}（空心圆）`,color:"var(--accent)"}]:[])]));
+  const chart=h("div",{class:"chart",style:"min-width:600px"}); card.append(h("div",{class:"scroll"},chart));view.append(card);deferDraw(()=>drawSep(chart,data));
+  view.append(h("div",{class:"card"},h("h2",null,"分歧有多大"),h("div",{class:"scroll"},h("table",null,
+    h("thead",null,h("tr",null,["期限","SEP 中位数","官员最低–最高","上版中位数","市场年末预期","市场减 SEP"].map(t=>h("th",null,t)))),
+    h("tbody",null,data.years.map(y=>h("tr",null,h("td",null,y.year==="Longer run"?"长期":y.year),
+      h("td",null,valueOrDash(y.median,"%",3)),h("td",null,`${y.min.toFixed(3)}–${y.max.toFixed(3)}%`),
+      h("td",null,valueOrDash(y.previous_median,"%",3)),h("td",null,valueOrDash(y.market_midpoint,"%",3)),h("td",null,signedBp(y.gap_bp)))))))));
+  view.append(h("div",{class:"notice"},"正差表示市场年末预期利率高于 SEP 中位数，负差表示低于。官员点位来自不同发布时间和政策判断，市场定价持续变化，二者差值不等于预测错误。若市场观察日早于本版 SEP 发布日，则不计算差值。"));
+}
+async function renderMacro(view) {
+  const data=await cached('/api/macro');
+  const fmt=(v,unit)=>valueOrDash(v,unit,unit==="千人"?0:2);
+  view.append(h("p",{class:"sub"},"数值固定为最新已发布月份，前值采用当前版本的前月数值。历史最多展示 36 个月，上方数据期筛选历史图。同比与环比均由原始指数计算；缺月断线，数据可能随后修订。"));
+  const tiles=h("div",{class:"tiles"});view.append(tiles);
+  for(const m of data.metrics) {
+    tiles.append(researchTile(m.label,fmt(m.value,m.unit),`${m.period?m.period.slice(0,7):"暂无数据"} · ${m.definition}`));
+  }
+  for(const m of data.metrics) {
+    const card=h("div",{class:"card"},h("h2",null,`${m.label} · ${m.definition}`));view.append(card);
+    if(m.status?.error) card.append(h("div",{class:"notice"},"本次更新失败，保留已有数据。上次成功："+(m.status.updated_at||"无")));
+    if(m.stale) card.append(h("div",{class:"notice"},"最新数据期距今超过 100 天，请核查来源更新状态。"));
+    if(m.series==="CPIAUCNS" && data.status.CPIAUCSL?.error) card.append(h("div",{class:"notice"},"CPI 季调环比来源更新失败，环比暂不展示。"));
+    if(!m.period || m.value==null) {card.append(emptyBox("尚未取得该指标的可用数据"));continue;}
+    card.append(h("p",{class:"sub"},`前月 ${m.previous_period?.slice(0,7)||"—"}：${fmt(m.previous,m.unit)} · ${m.secondary_label}：${fmt(m.secondary,m.secondary_label?.includes("千人")?"千人":"")}`));
+    const dates=m.trend.map(r=>r.date),indices=periodIndices(dates),xs=indices.map(i=>dates[i]),values=indices.map(i=>m.trend[i].value);
+    const chart=h("div");card.append(chart);deferDraw(()=>lineChart(chart,{xs,series:[{name:m.label,color:"var(--accent)",values}],
+      yFmt:v=>fmt(v,m.unit),height:210,tipTitle:t=>new Date(t).toISOString().slice(0,7),xFmt:t=>new Date(t).toISOString().slice(2,7),
+      ...(m.series==="PAYEMS"?{ref:{value:0,label:"零增长"}}:{})}));
+    card.append(h("p",{class:"sub"},`${m.source.owner}，经 FRED · 获取于 ${m.source.fetched_at}（北京） · `,sourceLink(m.source.url,"原始序列"),
+      m.secondary_source?h("span",null," · ",sourceLink(m.secondary_source,"季调环比序列")):null));
+    card.append(h("details",null,h("summary",null,"查看所选期间数值"),h("div",{class:"scroll"},h("table",null,
+      h("thead",null,h("tr",null,h("th",null,"数据月份"),h("th",null,`${m.definition}（${m.unit}）`))),
+      h("tbody",null,[...indices].reverse().map(i=>h("tr",null,h("td",null,dates[i].slice(0,7)),h("td",null,fmt(m.trend[i].value,m.unit)))))))));
+  }
+  const revisions=data.revisions||[];
+  view.append(h("div",{class:"card"},h("h2",null,"修订留痕"),
+    h("p",{class:"sub"},"比较本项目相邻抓取版本的原始序列，展示最近 100 条修订。首次接入无法还原历史初值；修改也可能包含年度重估或季调更新。数据月份不是发布日期。"),
+    revisions.length?h("div",{class:"scroll"},h("table",null,
+      h("thead",null,h("tr",null,["原始序列","数据月份","前次抓取值","本次抓取值","发现修订时间（北京）"].map(t=>h("th",null,t)))),
+      h("tbody",null,revisions.map(r=>h("tr",null,h("td",null,data.series[r.series]?.label||r.series),h("td",null,r.period.slice(0,7)),
+        h("td",null,r.before.toFixed(3)),h("td",null,r.after.toFixed(3)),h("td",null,r.captured_at)))))):
+      h("p",{class:"muted"},"尚未捕获版本间修订；后续每日抓取会自动积累。")));
+}
+
 // ---------- 数据与方法 ----------
 function renderData(view) {
   const st = S.state;
   const lu = st.last_update || {};
   const imports = st.imports || [];
+  const q = st.quality || {};
+  const inputRows = q.inputs || [], quotes = q.quotes || [];
+  view.append(h("div", {class:"card"}, h("h2", null, "实际采用的合约报价"),
+    h("p", {class:"sub"}, `观察日 ${st.latest_asof || "—"}；可用报价 ${inputRows.length} 个，其中 ${q.stale_contracts || 0} 个沿用旧日期。包含可用于锚月的合约。`),
+    h("details", null, h("summary", null, "查看合约、日期与来源"), h("div", {class:"scroll"}, h("table", null,
+      h("thead", null, h("tr", null, ["合约","报价交易日","来源","价格","距观察日（自然日）","价格记录时间（北京）"].map(t=>h("th",null,t)))),
+      h("tbody", null, inputRows.map(r=>h("tr",null,h("td",null,r.contract),h("td",null,r.trade_date),h("td",null,r.source),h("td",null,r.close.toFixed(4)),h("td",null,r.age_days),h("td",null,r.updated_at))))))),
+    h("details", null, h("summary",null,"各来源报价与价差"),
+      h("p",{class:"sub"},"按交易日和来源分别保留最新报价，采用 TradingView 优先的规则。历史已被覆盖的报价无法恢复；价差折成隐含月均利率 bp 的绝对差，不等于会议利率变化。"),
+      h("div",{class:"scroll"},h("table",null,
+        h("thead",null,h("tr",null,["合约","来源","报价","是否采用","获取时间（北京）"].map(t=>h("th",null,t)))),
+        h("tbody",null,quotes.map(r=>h("tr",null,h("td",null,r.contract),h("td",null,r.source),h("td",null,r.close.toFixed(4)),h("td",null,r.source===r.adopted_source?"采用":"对照"),h("td",null,r.fetched_at)))))),
+      h("p",{class:"sub"},(q.source_spreads||[]).map(r=>`${r.contract}：${r.price_gap_bp.toFixed(2)}bp`).join("；") || "当前观察日暂无多来源重叠报价"))));
   view.append(h("div", { class: "card" },
     h("h2", null, "数据状态"),
     h("table", null, h("tbody", null,
@@ -901,6 +1150,11 @@ async function render() {
   for (const b of document.querySelectorAll("#tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === S.tab));
   for (const b of document.querySelectorAll("#fSource button")) b.setAttribute("aria-pressed", String(b.dataset.v === S.source));
   for (const b of document.querySelectorAll("#fRange button")) b.setAttribute("aria-pressed", String(b.dataset.v === S.range));
+  document.getElementById('fSource').hidden = S.tab === 'macro';
+  document.getElementById('sourceLabel').hidden = S.tab === 'macro';
+  document.getElementById('fRange').hidden = S.tab === 'sep';
+  document.getElementById('rangeLabel').hidden = S.tab === 'sep';
+  document.getElementById('rangeLabel').textContent = S.tab === 'macro' ? '数据期' : '观察期';
   view.classList.add("stale");
   const fresh = h("section");
   const draws = [];
@@ -911,6 +1165,11 @@ async function render() {
     else if (S.tab === "terminal") await renderTerminal(fresh);
     else if (S.tab === "path") await renderPath(fresh);
     else if (S.tab === "table") await renderTable(fresh);
+    else if (S.tab === "repricing") await renderRepricing(fresh);
+    else if (S.tab === "events") await renderEvents(fresh);
+    else if (S.tab === "policy") await renderPolicy(fresh);
+    else if (S.tab === "sep") await renderSep(fresh);
+    else if (S.tab === "macro") await renderMacro(fresh);
     else renderData(fresh);
   } catch (e) {
     console.error(e);
@@ -924,13 +1183,15 @@ async function render() {
 }
 
 // 网址记住当前视图：#tab=meeting&meeting=2027-03-17 这种，可以收藏
-const HASH_KEYS = ["tab", "source", "range", "meeting", "view", "mode", "horizon", "asof", "theme"];
+const HASH_KEYS = ["tab", "source", "range", "meeting", "view", "mode", "horizon", "asof", "theme", "repriceMode", "compare", "event", "policyYear"];
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   for (const k of HASH_KEYS) if (p.get(k)) S[k] = p.get(k);
-  if (!["meeting", "terminal", "path", "table", "data"].includes(S.tab)) S.tab = "meeting";
+  if (!["meeting", "terminal", "path", "table", "data", "repricing", "events", "policy", "sep", "macro"].includes(S.tab)) S.tab = "policy";
   if (!["calc", "cme"].includes(S.source)) S.source = "calc";
   if (!["all", "180", "90", "30"].includes(S.range)) S.range = "all";
+  if (!["level", "change"].includes(S.repriceMode)) S.repriceMode = "level";
+  if (!["1d", "1w", "1m"].includes(S.compare)) S.compare = "1d";
   if (S.theme === "dark" || S.theme === "light") document.documentElement.dataset.theme = S.theme;
 }
 function writeHash() {
@@ -946,6 +1207,9 @@ function writeHash() {
   }
   if (S.tab === "table" && S.asof) p.set("asof", S.asof);
   if (S.theme) p.set("theme", S.theme);
+  if (S.tab === "repricing") {p.set("repriceMode", S.repriceMode); p.set("compare", S.compare);}
+  if (S.tab === "events" && S.event) p.set("event", S.event);
+  if (S.tab === "policy" && S.policyYear) p.set("policyYear",S.policyYear);
   history.replaceState(null, "", "#" + p.toString());
 }
 
