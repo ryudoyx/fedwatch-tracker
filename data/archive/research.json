@@ -2,7 +2,7 @@
   "macro": {
     "CPIAUCNS": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-10-29 10:54:28",
+      "fetched_at": "2026-10-30 10:58:27",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "CPI（未季调指数）",
       "observations": [
@@ -238,7 +238,7 @@
     },
     "CPIAUCSL": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-10-29 10:54:29",
+      "fetched_at": "2026-10-30 10:58:27",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "CPI（季调指数）",
       "observations": [
@@ -474,7 +474,7 @@
     },
     "PAYEMS": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-10-29 10:54:30",
+      "fetched_at": "2026-10-30 10:58:28",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "非农就业人数（季调，千人）",
       "observations": [
@@ -714,7 +714,7 @@
     },
     "PCEPILFE": {
       "current_from": "2022-01-01",
-      "fetched_at": "2026-10-29 10:54:30",
+      "fetched_at": "2026-10-30 10:58:28",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "核心 PCE（季调指数）",
       "observations": [
@@ -936,11 +936,15 @@
         },
         {
           "date": "2026-07-01",
-          "value": 130.133
+          "value": 130.148
         },
         {
           "date": "2026-08-01",
-          "value": 130.455
+          "value": 130.489
+        },
+        {
+          "date": "2026-09-01",
+          "value": 130.902
         }
       ],
       "owner": "BEA",
@@ -950,7 +954,7 @@
     },
     "UNRATE": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-10-29 10:54:30",
+      "fetched_at": "2026-10-30 10:58:28",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "失业率（季调，%）",
       "observations": [
@@ -1185,10 +1189,25 @@
       "url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2024&endyear=2026"
     }
   },
-  "revisions": [],
+  "revisions": [
+    {
+      "after": 130.148,
+      "before": 130.133,
+      "captured_at": "2026-10-30 10:58:28",
+      "period": "2026-07-01",
+      "series": "PCEPILFE"
+    },
+    {
+      "after": 130.489,
+      "before": 130.455,
+      "captured_at": "2026-10-30 10:58:28",
+      "period": "2026-08-01",
+      "series": "PCEPILFE"
+    }
+  ],
   "sep": [
     {
-      "fetched_at": "2026-10-29 10:54:31",
+      "fetched_at": "2026-10-30 10:58:28",
       "release_date": "2026-06-17",
       "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260617.htm",
       "years": [
@@ -1335,7 +1354,7 @@
       ]
     },
     {
-      "fetched_at": "2026-10-29 10:54:30",
+      "fetched_at": "2026-10-30 10:58:28",
       "release_date": "2026-09-16",
       "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260916.htm",
       "years": [
@@ -1494,28 +1513,28 @@
   "status": {
     "CPIAUCNS": {
       "error": null,
-      "updated_at": "2026-10-29 10:54:28"
+      "updated_at": "2026-10-30 10:58:27"
     },
     "CPIAUCSL": {
       "error": null,
-      "updated_at": "2026-10-29 10:54:29"
+      "updated_at": "2026-10-30 10:58:27"
     },
     "PAYEMS": {
       "error": null,
-      "updated_at": "2026-10-29 10:54:30"
+      "updated_at": "2026-10-30 10:58:28"
     },
     "PCEPILFE": {
       "error": null,
-      "updated_at": "2026-10-29 10:54:30"
+      "updated_at": "2026-10-30 10:58:28"
     },
     "UNRATE": {
       "error": null,
-      "updated_at": "2026-10-29 10:54:30"
+      "updated_at": "2026-10-30 10:58:28"
     },
     "sep": {
       "error": null,
       "latest_release": "20260916",
-      "updated_at": "2026-10-29 10:54:31"
+      "updated_at": "2026-10-30 10:58:28"
     }
   }
 }
