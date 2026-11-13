@@ -2,7 +2,7 @@
   "macro": {
     "CPIAUCNS": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-11-12 12:17:43",
+      "fetched_at": "2026-11-13 11:36:34",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "CPI（未季调指数）",
       "observations": [
@@ -242,7 +242,7 @@
     },
     "CPIAUCSL": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:34",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "CPI（季调指数）",
       "observations": [
@@ -482,7 +482,7 @@
     },
     "PAYEMS": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:35",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "非农就业人数（季调，千人）",
       "observations": [
@@ -726,7 +726,7 @@
     },
     "PCEPILFE": {
       "current_from": "2022-01-01",
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:34",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "核心 PCE（季调指数）",
       "observations": [
@@ -966,7 +966,7 @@
     },
     "UNRATE": {
       "current_from": "2024-01-01",
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:35",
       "first_captured_at": "2026-10-15 11:12:28",
       "label": "失业率（季调，%）",
       "observations": [
@@ -1237,7 +1237,7 @@
   ],
   "sep": [
     {
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:35",
       "release_date": "2026-06-17",
       "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260617.htm",
       "years": [
@@ -1384,7 +1384,7 @@
       ]
     },
     {
-      "fetched_at": "2026-11-12 12:17:44",
+      "fetched_at": "2026-11-13 11:36:35",
       "release_date": "2026-09-16",
       "url": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260916.htm",
       "years": [
@@ -1543,28 +1543,28 @@
   "status": {
     "CPIAUCNS": {
       "error": null,
-      "updated_at": "2026-11-12 12:17:43"
+      "updated_at": "2026-11-13 11:36:34"
     },
     "CPIAUCSL": {
       "error": null,
-      "updated_at": "2026-11-12 12:17:44"
+      "updated_at": "2026-11-13 11:36:34"
     },
     "PAYEMS": {
       "error": null,
-      "updated_at": "2026-11-12 12:17:44"
+      "updated_at": "2026-11-13 11:36:35"
     },
     "PCEPILFE": {
       "error": null,
-      "updated_at": "2026-11-12 12:17:44"
+      "updated_at": "2026-11-13 11:36:34"
     },
     "UNRATE": {
       "error": null,
-      "updated_at": "2026-11-12 12:17:44"
+      "updated_at": "2026-11-13 11:36:35"
     },
     "sep": {
       "error": null,
       "latest_release": "20260916",
-      "updated_at": "2026-11-12 12:17:44"
+      "updated_at": "2026-11-13 11:36:35"
     }
   }
 }
